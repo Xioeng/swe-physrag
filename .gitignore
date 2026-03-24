@@ -56,3 +56,9 @@ cache/
 
 # Optional large model/data caches
 .huggingface/
+
+# Agents
+
+.github
+# Extra data files
+data/*
