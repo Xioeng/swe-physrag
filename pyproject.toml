@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "physrag"
+version = "0.1.0"
+description = "Physical retrieval-augmented generation: Data retrieval and interpolation for physics simulations"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+
+# Core dependencies
+dependencies = [
+    "numpy>=1.21.0",
+    "pandas>=1.3.0",
+    "requests>=2.26.0",
+    "scipy>=1.7.0",
+]
+
+[project.optional-dependencies]
+# Development dependencies
+dev = [
+    "pytest>=6.2",
+    "pytest-cov>=2.12",
+    "black>=21.6b0",
+    "isort>=5.9",
+    "mypy>=0.910",
+    "flake8>=3.9",
+]
+
+# Documentation
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme>=0.5",
+    "myst-parser>=0.16",
+]
+
+# All extras (note: swe-simulator requires manual conda setup, not included here)
+all = [
+    "physrag[dev,docs]",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/physrag"
+Documentation = "https://physrag.readthedocs.io"
+Repository = "https://github.com/yourusername/physrag.git"
+Issues = "https://github.com/yourusername/physrag/issues"
+
+[tool.setuptools]
+packages = ["physrag", "physrag.bathymetry_retrieval", "physrag.data_interpolation", "physrag.rag_data_retrieval", "physrag.integrations"]
+
+[tool.black]
+line-length = 100
+target-version = ['py39', 'py310', 'py311', 'py312']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=physrag --cov-report=html --cov-report=term-missing"

@@ -58,7 +58,10 @@ cache/
 .huggingface/
 
 # Agents
-
 .github
+
 # Extra data files
 data/*
+gebco_data/*
+tests/artifacts
+output*/
