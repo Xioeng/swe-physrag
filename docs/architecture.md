@@ -1,347 +1,559 @@
 # Architecture & Design
 
-Design principles, package structure, and integration patterns.
+Comprehensive overview of PhysRAG-SWE's layered architecture, design principles, and data flow patterns.
 
-## Core Principles
+---
 
-### 1. Dependency Inversion
+## Core Architecture
 
-physrag is structured in layers:
+PhysRAG-SWE follows a **layered architecture** that separates concerns and enables flexible integration:
 
 ```
-Layer 1: physrag core (independent)
-         └─ No external package dependencies
-         └─ Works standalone
-
-Layer 2: physrag.integrations (adapters)
-         └─ Optional modules
-         └─ Bridge to external packages
-
-Layer 3: External packages (consumers)
-         └─ tidalflow, pytorch, etc.
-         └─ Use physrag via imports
+┌──────────────────────────────────────────────────────────────┐
+│                    User Application Layer                     │
+│              (Main simulation and analysis scripts)            │
+└────────────────────────┬─────────────────────────────────────┘
+                         │
+┌────────────────────────▼─────────────────────────────────────┐
+│              Simulation Configuration Layer                   │
+│        (SimulationConfig, Boundary Conditions, Physics)      │
+└────────────────────────┬─────────────────────────────────────┘
+                         │
+┌────────────────┬───────▼────────┬──────────────────┐
+│     Data       │                │                  │
+│  Retrieval     │   SWE Solver   │    Wind & Other  │
+│                │                │    Forcing       │
+├────────────────┼────────────────┼──────────────────┤
+│ • Bathymetry   │• PyClaw Roe    │ • Constant wind  │
+│ • Observations │• Coordinate    │ • Time-varying   │
+│ • Interpolation│  mapping       │ • Parametric     │
+└────────────────┴────────────────┴──────────────────┘
+         │                │               │
+         ▼                ▼               ▼
+    ┌─────────────────────────────────────────────┐
+    │        SWEResult Container & I/O            │
+    │  (Output files, metadata, visualization)    │
+    └─────────────────────────────────────────────┘
 ```
 
-**Benefit:** Core remains lightweight and reusable; integrations are optional.
+---
 
-### 2. Package Independence
+## Design Principles
 
-physrag imports external packages only in integration modules:
+### 1. **Separation of Concerns**
+
+Each module has a single, well-defined responsibility:
+
+| Layer | Module | Responsibility |
+|-------|--------|-----------------|
+| Data Retrieval | `bathymetry_retrieval` | Fetch & parse GEBCO bathymetry |
+| Data Retrieval | `rag_data_retrieval` | Filter observations by space/time |
+| Interpolation | `data_interpolation` | Interpolate sparse data to grid |
+| Simulation | `config` | Configuration management & validation |
+| Simulation | `solver` | SWE solving with PyClaw |
+| I/O | `utils` | File I/O, visualization, analysis |
+
+**Benefit:** Modules are testable, maintainable, and reusable independently.
+
+### 2. **Zero External Dependencies in Core**
+
+Core modules depend only on standard scientific stack:
 
 ```python
-# ✅ Core module (always works)
-import numpy
-import pandas
-# No tidalflow, pytorch, etc.
+# Core modules (always available)
+import numpy           # Core computations
+import pandas          # Data manipulation
+import scipy           # Interpolation
+import requests        # HTTP requests
 
-# ✅ Integration module (optional)
-try:
-    import tidalflow
-except ImportError:
-    # Handle gracefully
+# NOT in core (optional)
+# import clawpack       # Only needed for SWE solver
+# import matplotlib     # Only needed for visualization
 ```
 
-### 3. Clear Separation of Concerns
+**Benefit:** PhysRAG-SWE can be used for data retrieval alone without installing PyClaw.
 
-| Component | Purpose | Dependencies |
-|-----------|---------|--------------|
-| bathymetry_retrieval | GEBCO data access | None (requests is ok) |
-| rag_data_retrieval | CSV geospatial filtering | None |
-| data_interpolation | 2D sparse interpolation | scipy only |
-| integrations/* | Package adapters | External packages only |
+### 3. **Physics-First Data Integration**
+
+Data retrieval and interpolation are tightly coupled with physics:
+
+- **Bathymetry:** Must maintain proper sign conventions (negative = depth)
+- **Water Level:** Integrated into initial conditions respecting bathymetry
+- **Wind Forcing:** Converted to stress terms using drag coefficient formulation
+- **Uncertainty:** Tracked through interpolation to quantify confidence in simulations
+
+### 4. **Configuration-Driven Simulations**
+
+All parameters in single `SimulationConfig` object with automatic validation:
+
+```python
+config = SimulationConfig(...)  # All params in one place
+config.validate()               # Checks domain, time, physics
+config.save("config.json")      # Reproducible setup
+```
+
+**Benefit:** Reproducibility and easy parameter exploration.
+
+### 5. **Provider Pattern for Data Sources**
+
+Abstract data provider interfaces allow flexible plug-in sources:
+
+```python
+# Built-in providers
+bathymetry = GEBCOBathymetryProvider()
+water_level = InterpolatedObservationsProvider()
+
+# Custom providers
+bathymetry = DatabaseBathymetryProvider()  # User-defined
+```
+
+**Benefit:** No modification to core code needed for new data sources.
 
 ---
 
 ## Package Structure
 
+### Core Modules
+
 ```
 physrag/
-├── __init__.py                          # Package entry point
+├── __init__.py                      # Package exports
+├── config.py                        # SimulationConfig dataclass
+├── solver.py                        # SWESolver main class
+├── forcing.py                       # WindForcing classes
+├── coordinate_mapper.py             # Geographic↔Metric mapping
+├── exceptions.py                    # Custom exceptions
 │
-├── bathymetry_retrieval/                # GEBCO data retrieval
+├── bathymetry_retrieval/
+│   ├── __init__.py                 # Public API
+│   ├── gebco_opendap.py            # OPeNDAP access
+│   ├── gebco_local.py              # NetCDF loading
+│   ├── providers.py                # Provider interfaces
+│   └── utils.py                    # Helper functions
+│
+├── rag_data_retrieval/
 │   ├── __init__.py
-│   ├── query.py                         # Build OPeNDAP queries
-│   ├── retrieval.py                     # Download via OPeNDAP
-│   └── conversion.py                    # Parse to DataFrame
+│   ├── csv_loader.py               # CSV I/O
+│   ├── filters.py                  # Geographic/temporal filters
+│   └── providers.py                # Provider interfaces
 │
-├── rag_data_retrieval/                  # CSV/geospatial filtering
+├── data_interpolation/
 │   ├── __init__.py
-│   └── csv_retrieval.py                 # CSV operations
+│   ├── sparse_interpolator.py      # Main interpolation class
+│   ├── rbf.py                      # RBF methods
+│   ├── kriging.py                  # Kriging methods
+│   └── utils.py                    # Utilities
 │
-├── data_interpolation/                  # Sparse data interpolation
+├── integrations/
 │   ├── __init__.py
-│   └── sparse_interpolator.py           # RBF interpolation
+│   └── [future integrations]       # External package adapters
 │
-├── integrations/                        # Optional adapters
-│   ├── __init__.py
-│   └── tidalflow_providers.py          # tidalflow adapters
-│
-└── utils.py                             # Shared utilities
+└── utils/
+    ├── __init__.py
+    ├── io.py                       # File I/O
+    ├── visualization.py            # Plotting
+    ├── analysis.py                 # Result analysis
+    └── bathymetry.py              # Bathymetry utilities
 ```
 
 ### Module Responsibilities
 
-**bathymetry_retrieval**
-- Build OPeNDAP query strings
-- Download GEBCO data
-- Parse ASCII to DataFrame
-- Cache management
-
-**rag_data_retrieval**
-- Load CSV files
-- Filter by geographic extent (lon/lat bounds)
-- Filter by temporal range (optional)
-- Column mapping and selection
-
-**data_interpolation**
-- Sparse 2D point data management
-- RBF-based interpolation
-- Uncertainty estimation
-- Efficient caching
-
-**integrations/tidalflow_providers**
-- Wrap physrag data for tidalflow interfaces
-- Handle missing tidalflow gracefully
-- Provide two main adapter classes:
-  - `BathymetryFromGEBCO` → implements tidalflow BathymetryProvider
-  - `WaterLevelInterpolationProvider` → implements tidalflow InitialConditionProvider
-
----
-
-## Integration Pattern
-
-When adding support for a new package (e.g., `my_package`):
-
-### 1. Create Integration Module
+#### `config.py`
 
 ```python
-# physrag/integrations/my_package_providers.py
-
-from typing import Tuple
-import numpy as np
-
-# Import your data modules
-from physrag import bathymetry_retrieval, data_interpolation
-
-# Try-except for optional external package
-try:
-    import my_package
-    HAS_MY_PACKAGE = True
-except ImportError:
-    HAS_MY_PACKAGE = False
-
-
-class MyPackageAdapter:
-    """Adapts physrag data to my_package interface."""
+class SimulationConfig:
+    """Central configuration repository."""
     
-    def __init__(self, physrag_data):
-        if not HAS_MY_PACKAGE:
-            raise ImportError(
-                "my_package is required. "
-                "Install with: [instructions here]"
-            )
-        self.data = physrag_data
+    # Domain parameters
+    lon_range: Tuple[float, float]      # Geographic extent
+    lat_range: Tuple[float, float]
+    nx: int                             # Grid resolution
+    ny: int
     
-    def to_my_package_format(self):
-        """Convert physrag data to my_package format."""
-        # Implement conversion
+    # Time stepping
+    t_final: float                      # Simulation duration
+    dt: float                           # Time step
+    
+    # Physics
+    gravity: float                      # Gravitational acceleration
+    
+    # Boundary conditions
+    bc_lower: Tuple[int, int]          # Wall/open/periodic
+    bc_upper: Tuple[int, int]
+    
+    # Output management
+    output_dir: str
+    multiple_output_times: bool
+    frame_interval: int
+    
+    # Numerical parameters
+    cfl_desired: float
+    cfl_max: float
+```
+
+#### `solver.py`
+
+```python
+class SWESolver:
+    """Integrates PyClaw with SWE physics and data."""
+    
+    def __init__(self, config):
+        self.config = config            # Configuration
+        self.mapper = CoordinateMapper() # Geographic↔Metric
+        
+    def set_bathymetry(self, bathymetry: np.ndarray):
+        """Set ocean floor elevation."""
+        
+    def set_initial_condition(self, h_hu_hv: np.ndarray):
+        """Set water depth and momentum at t=0."""
+        
+    def set_constant_wind_forcing(self, u_wind, v_wind):
+        """Set uniform wind forcing."""
+        
+    def setup_solver(self):
+        """Initialize PyClaw structures."""
+        
+    def solve(self):
+        """Run simulation and return solutions."""
+```
+
+#### `bathymetry_retrieval/`
+
+**Responsibilities:**
+- Query GEBCO OPeNDAP server
+- Interpolate to simulation grid
+- Cache data locally
+- Handle missing values
+
+**Key Functions:**
+```python
+fetch_gebco_opendap(extent, ...)           # Download
+load_gebco_netcdf(nc_path, ...)           # Local file
+interpolate_gebco_on_grid(X, Y, ...)      # To grid
+```
+
+#### `rag_data_retrieval/`
+
+**Responsibilities:**
+- Load CSV observation files
+- Filter by geographic extent
+- Filter by temporal range
+- Map column names
+
+**Key Functions:**
+```python
+read_csv_extent(csv_path, extent, ...)    # Filter CSV
+read_csv_time(csv_path, time_range, ...)  # Temporal filter
+```
+
+#### `data_interpolation/`
+
+**Responsibilities:**
+- Store sparse point data
+- Interpolate to grid
+- Estimate uncertainty
+- Cache fitted models
+
+**Key Class:**
+```python
+class SparseDataInterpolator:
+    def __init__(self, x, y, values, method='rbf'):
         pass
+    
+    def interpolate(self, x_grid, y_grid):
+        return gridded_values, uncertainty
 ```
-
-### 2. Export in __init__.py
-
-```python
-# physrag/integrations/__init__.py
-
-__all__ = []  # or list specific classes you want to export
-```
-
-### 3. Update pyproject.toml (if pip-installable)
-
-```toml
-[project.optional-dependencies]
-my-package = ["my-package>=1.0"]
-```
-
-Note: For packages requiring conda (like tidalflow), don't add to pyproject.toml.
 
 ---
 
 ## Data Flow Patterns
 
-### Pattern 1: Core Data Retrieval (Standalone)
+### Pattern 1: Simple Slope Test (No Data)
+
 ```
-User Script
-    ↓
-physrag.bathymetry_retrieval.download_gebco_ascii()
-    ↓
-GEBCO OPeNDAP Server
-    ↓
-pandas.DataFrame
+┌──────────────────┐
+│ SimulationConfig │────────┐
+└──────────────────┘        │
+                            ▼
+              ┌─────────────────────┐
+              │   SWESolver (init)  │
+              │ • Create grid       │
+              │ • Allocate arrays   │
+              └─────────────────────┘
+                       │
+        ┌──────────────┼──────────────┐
+        │              │              │
+        ▼              ▼              ▼
+  ┌──────────┐  ┌────────────┐  ┌──────────┐
+  │Flat/Slope│  │ Gaussian   │  │ Wind     │
+  │Bathymetry│  │ Hump       │  │ Forcing  │
+  │(Analytic)│  │ (Analytic) │  │ (Formula)│
+  └──────────┘  └────────────┘  └──────────┘
+        │              │              │
+        └──────────────┼──────────────┘
+                       ▼
+              ┌─────────────────────┐
+              │  solver.setup()     │
+              │  solver.solve()     │
+              └─────────────────────┘
+                       │
+                       ▼
+              ┌─────────────────────┐
+              │   Solutions Arrays  │
+              │ (h, hu, hv at times)│
+              └─────────────────────┘
 ```
 
-### Pattern 2: CSV Filtering
+### Pattern 2: Data-Driven (With GEBCO)
+
 ```
-User Script
-    ↓
-physrag.rag_data_retrieval.read_csv_extent()
-    ↓
-Local CSV File
-    ↓
-Filtered pandas.DataFrame
+┌──────────────────┐
+│GEBCO OPeNDAP/    │
+│Local NetCDF      │
+└────────┬─────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│ bathymetry_retrieval.load()     │
+│ → DataFrame or numpy array      │
+└────────┬────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│ Interpolate to Grid             │
+│ (scipy.interpolate.griddata)    │
+└────────┬────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│ SimulationConfig + Bathymetry   │
+│ → SWESolver.set_bathymetry()    │
+└────────┬────────────────────────┘
+         │
+         ▼
+    [Continue as Pattern 1]
 ```
 
-### Pattern 3: Data Interpolation
-```
-Sparse Measurements
-    ↓
-physrag.data_interpolation.SparseDataInterpolator
-    ↓
-Regular Grid
-    ↓
-Interpolated Values + Uncertainties
-```
+### Pattern 3: Observations Integration
 
-### Pattern 4: Integration (With External Package)
 ```
-physrag Data
-    ↓
-physrag.integrations.my_package_providers.Adapter
-    ↓
-External Package Interface
-    ↓
-External Package Computation
+┌──────────────────────┐
+│ Observation CSV      │
+│ (Tide gauges, buoys) │
+└────────┬─────────────┘
+         │
+         ▼
+┌──────────────────────────────────┐
+│ rag_data_retrieval.read_csv_()   │
+│ Filter by extent, time           │
+└────────┬─────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────┐
+│ data_interpolation.interpolate() │
+│ RBF or Kriging → Grid values     │
+└────────┬─────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────┐
+│ Create Initial Condition         │
+│ initial = [h_obs, 0, 0]         │
+└────────┬─────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────┐
+│ SWESolver.set_initial_condition()│
+└────────┬─────────────────────────┘
+         │
+         ▼
+    [Continue as Pattern 1]
 ```
 
 ---
 
-## Design Decisions
+## Integration Points
 
-### Why Separate Files Over Monolithic Module?
+### With PyClaw
 
-✅ **Modularity:** Each subpackage has clear responsibility  
-✅ **Reusability:** Users import only what they need  
-✅ **Testability:** Test each module independently  
-✅ **Maintainability:** Changes isolated to relevant module  
+SWE Solver is **thin wrapper around PyClaw**:
 
-### Why Try-Except for External Packages?
-
-✅ **Graceful Degradation:** Core works without optional dependencies  
-✅ **Clear Error Messages:** User knows what to install  
-✅ **Flexible Installation:** Users choose their integrations  
-
-### Why Not Use Pip Extras for tidalflow?
-
-Conda-only packages cannot be installed via pip extras because:
-1. They depend on conda for compiled libraries (HDF5, etc.)
-2. Pip cannot manage conda dependencies
-3. tidalflow must be built from source in conda environment
-
-**Solution:** Document conda setup separately; handle ImportError gracefully in code.
-
-### Why Interpolation Over Extrapolation?
-
-RBF interpolation is used because:
-- Suitable for sparse 2D point data (typical for measurements)
-- Provides uncertainty estimates
-- Efficient for grid evaluation
-- No assumptions about data distribution
-
-Caveats:
-- Data must be reasonably dense for good results
-- Extrapolation beyond measurement extent is unreliable
-- Performance degrades with very large datasets
-
----
-
-## Testing Strategy
-
-### Test Isolation
-
-```bash
-# Test core (works without external packages)
-pytest tests/ -k "not integration"
-
-# Test with integrations
-pytest tests/ -k "integration"
-
-# Full test suite (requires all optional packages)
-pytest tests/
-```
-
-### Mock External Packages
+- PyClaw handles finite volume discretization
+- PhysRAG-SWE adds bathymetry & coordinate mapping
+- Wind forcing integrated via source terms
 
 ```python
-# Don't test tidalflow behavior in physrag tests
-# Only test that adapters provide correct interface
-
-from unittest.mock import Mock
-import physrag.integrations.tidalflow_providers as providers
-
-mock_swe = Mock()
-provider = providers.BathymetryFromGEBCO(extent=(...))
-# Test only physrag's responsibility: correct data format
+# Inside SWESolver
+self.claw = pyclaw.Controller()
+self.claw.solver = pyclaw.ShallowWaterSolver()
+self.claw.solver.bathymetry_source = self.bathymetry
+self.claw.solver.wind_forcing_fn = self.wind_forcing_source_term
 ```
+
+### With External Packages
+
+Design allows for future integrations without modifying core:
+
+```python
+# Example: Integration with data assimilation framework
+from physrag.integrations import DataAssimilationAdapter
+
+da_adapter = DataAssimilationAdapter(
+    solver=solver,
+    observations=obs_data,
+    method='ensemble_kalman_filter'
+)
+result = da_adapter.run()
+```
+
+---
+
+## Error Handling & Validation
+
+### Configuration Validation
+
+```python
+config = SimulationConfig(...)
+
+# Automatic validation in __post_init__
+# Checks:
+# • Domain bounds: lon_min < lon_max, lat_min < lat_max
+# • Grid: nx, ny > 0
+# • Time: 0 < dt < t_final
+# • Physics: gravity > 0
+# • Boundary conditions: valid values (0, 1, 2)
+# • CFL: 0 < cfl_desired <= cfl_max
+```
+
+### Data Validation
+
+```python
+# Bathymetry checking
+assert bathymetry.shape == (ny, nx)
+assert np.all(np.isfinite(bathymetry)) or np.any(np.isnan(bathymetry))
+
+# Initial condition checking
+assert h.shape == (ny, nx)
+assert np.all(h >= 0)  # No negative water depths
+assert np.all(np.isfinite(h))  # No NaN values allowed
+```
+
+### Exception Hierarchy
+
+```python
+class PhysRAGError(Exception):
+    """Base exception for all PhysRAG errors."""
+
+class ConfigurationError(PhysRAGError):
+    """Invalid configuration parameters."""
+
+class DataRetrievalError(PhysRAGError):
+    """Failed to retrieve data."""
+
+class InterpolationError(PhysRAGError):
+    """Interpolation failed (invalid data, etc.)."""
+
+class SolverError(PhysRAGError):
+    """SWE solver encountered error."""
+```
+
+---
+
+## Testing Architecture
+
+### Unit Tests
+
+Test individual modules in isolation:
+
+```
+tests/
+├── test_config.py              # Configuration validation
+├── test_bathymetry_retrieval/  # Data retrieval
+├── test_rag_data_retrieval/    # CSV filtering
+├── test_data_interpolation/    # Interpolation methods
+└── test_solver/                # SWE solver
+```
+
+### Integration Tests
+
+Test module interactions:
+
+```
+tests/integration/
+├── test_retrieval_to_grid/     # Download→Interpolate
+├── test_complete_workflow/     # Full simulation
+└── test_mpi_simulation/        # Parallel execution
+```
+
+### Verification Tests
+
+Test against analytical solutions:
+
+```python
+# Gaussian hump on periodic domain - known analytical solution
+# Flat bathymetry dam break - self-similar solution
+# Radial dam break - comparison with published results
+```
+
+---
+
+## Performance Characteristics
+
+### Memory Usage
+
+| Operation | Memory |
+|-----------|--------|
+| SimulationConfig | ~1 KB |
+| Grid (nx=100, ny=100) | ~3 MB |
+| Solutions (100 time steps) | ~300 MB |
+| Interpolator (1000 points) | ~10 MB |
+
+### Computational Time
+
+| Operation | Time (Typical) |
+|-----------|----------------|
+| GEBCO download | 5-30 seconds |
+| Grid interpolation | 0.1-1 seconds |
+| RBF interpolation setup | 0.1-5 seconds |
+| SWE solve (100 steps) | 10-60 seconds |
+
+**Optimization:**
+- Cache downloaded data
+- Reuse interpolators
+- Use MPI for large domains
+- Reduce output frequency
 
 ---
 
 ## Future Extensibility
 
-### Adding New Data Sources
+### Adding Data Sources
 
-1. Create `physrag/<new_source>/` module
-2. Implement retrieval, parsing, filtering functions
-3. Export via `_init__.py`
+1. Create module in `bathymetry_retrieval/` or `rag_data_retrieval/`
+2. Implement retrieval/filtering functions
+3. Optionally implement provider interface
 4. Document in API reference
 
-### Adding New Integrations
+### Adding Interpolation Methods
 
-1. Create `physrag/integrations/<package>_providers.py`
-2. Create adapter classes wrapping physrag data
-3. Try-except import external package
-4. Update getting-started docs
+1. Add method to `SparseDataInterpolator` class
+2. Maintain backward compatibility
+3. Implement uncertainty estimation
+4. Add unit tests
 
-### Adding New Interpolation Methods
+### Adding Physics
 
-1. Add methods to `SparseDataInterpolator` class
-2. Keep backward compatibility
-3. Update documentation and examples
-
----
-
-## Performance Considerations
-
-### Memory Usage
-
-- Large GEBCO downloads are cached in-memory (use `keep_csv=True` for persistence)
-- Interpolation creates dense grids; consider chunking for very large grids
-- CSV filtering is efficient (pandas vectorized operations)
-
-### Computational Cost
-
-- OPeNDAP downloads depend on network/server
-- RBF interpolation setup: O(n³) where n=number of measurement points
-- RBF evaluation: O(n) per grid point
-
-**Optimization tips:**
-- Cache downloaded data (use `keep_csv=True`)
-- Reuse interpolators for multiple grids
-- Chunk large interpolation grids
+1. Extend `SimulationConfig` with new parameters
+2. Modify source term functions in solver
+3. Validate new parameters
+4. Document in physics section
 
 ---
 
-## Dependency Graph
+## References
 
-```
-physrag (core)
-├── numpy
-├── pandas
-├── scipy
-└── requests
+- **Software Architecture:** Gamma et al. "Design Patterns" (1994)
+- **Separation of Concerns:** Dijkstra (1974)
+- **Plugin Architecture:** Parnas, D. L. (1972) "On the Criteria To Be Used in Decomposing Systems into Modules"
 
-physrag.integrations.tidalflow_providers
-├── physrag (core)
-└── tidalflow [OPTIONAL, conda-only]
-```
+---
 
-No circular dependencies; clean dependency tree.

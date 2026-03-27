@@ -1,229 +1,435 @@
-# Getting Started
+# Getting Started with PhysRAG-SWE
+
+Quick start guide to install and run PhysRAG-SWE for your first simulation.
+
+## Prerequisites
+
+- **Python 3.11+** (3.11, 3.12 recommended)
+- **conda** (for managing dependencies)
+- **Git** (for cloning the repository)
+- **~4GB disk space** (for GEBCO bathymetry data)
+
+---
 
 ## Installation
 
-### Core Installation (Recommended)
+### 1. Create and activate conda environment
+
 ```bash
-cd /path/to/physrag
+conda env create -f environment.yml
+conda activate physrag-swe
+```
+
+This creates an isolated environment with all required dependencies:
+- clawpack (PyClaw solver)
+- numpy, scipy, pandas (numerical computing)
+- matplotlib, cartopy (visualization)
+- xarray (file I/O)
+
+### 2. Install from source
+
+```bash
+git clone https://github.com/yourusername/physrag-swe.git
+cd physrag-swe
+
+# Install package in editable mode
 pip install -e .
 ```
 
-**What's installed:**
-- physrag core modules (bathymetry_retrieval, data_interpolation, rag_data_retrieval)
-- Dependencies: numpy, pandas, scipy, requests
-- Ready to use immediately
+### 3. Verify installation
 
-**Verification:**
 ```bash
-python -c "import physrag; print(physrag.__file__)"
+python -c "import physrag; print(physrag.__version__)"
+python -c "import clawpack; print('PyClaw OK')"
 ```
 
-### Development Installation
+### 4. (Optional) Development setup
+
+For contributing to PhysRAG-SWE:
+
 ```bash
+# Install development dependencies
 pip install -e ".[dev]"
-```
 
-**Adds:** pytest, black, mypy, flake8, isort
+# Run tests
+pytest tests/
 
-### Full Installation (All Extras)
-```bash
-pip install -e ".[all]"
-```
-
-**Adds:** dev tools + documentation tools
-
----
-
-## Using with tidalflow
-
-⚠️ **Special Setup Required** — tidalflow requires conda environment management.
-
-### Prerequisites
-- tidalflow must be installed in conda environment
-- Cannot be installed via pip extras
-
-### Setup Steps
-
-**1. Create conda environment**
-```bash
-conda env create -f environment.yml
-conda activate tidalflow
-```
-
-**2. Install tidalflow from source**
-```bash
-git clone https://github.com/yourusername/TidalFlow-SWE.git
-cd TidalFlow-SWE
-pip install -r requirements.txt
-pip install .
-```
-
-**3. Install physrag in same environment**
-```bash
-cd /path/to/physrag
-pip install -e .
-```
-
-### Usage
-```bash
-# Always activate conda environment first
-conda activate tidalflow
-
-# Now use physrag with tidalflow
-python your_script.py
-```
-
-**Verification:**
-```bash
-conda activate tidalflow
-python -c "from physrag.integrations.tidalflow_providers import BathymetryFromGEBCO; print('OK')"
+# Check code style
+black physrag/ --check
+mypy physrag/
 ```
 
 ---
 
-## Basic Usage Examples
+## Quick Start
 
-### Download Bathymetry Data
-```python
-import physrag
+### Example 1: Simple Shallow Water Simulation
 
-extent = (-87.23, -87.09, 30.20, 30.40)  # (west, east, south, north)
+Create a file `simple_simulation.py`:
 
-# Direct download
-df = physrag.bathymetry_retrieval.download_gebco_ascii(extent=extent)
-print(df.head())
-```
-
-### Filter CSV by Geographic Extent
-```python
-import physrag
-
-extent = (-87.23, -87.09, 30.20, 30.40)
-
-df = physrag.rag_data_retrieval.read_csv_extent(
-    csv_path="weather_data.csv",
-    extent=extent,
-    lat_col="latitude_decimal_degrees",
-    lon_col="longitude_decimal_degrees",
-    columns=["station_name", "water_level_m_mllw", "temperature_c"]
-)
-print(f"Found {len(df)} stations in extent")
-```
-
-### Interpolate Sparse Measurements
 ```python
 import physrag
 import numpy as np
 
-# Your measurement data
-lons = np.array([-87.2, -87.1, -87.15])
-lats = np.array([30.3, 30.35, 30.25])
-values = np.array([1.2, 0.8, 1.0])  # water levels
-
-# Create interpolator
-interp = physrag.data_interpolation.SparseDataInterpolator(
-    x=lons,
-    y=lats,
-    values=values
+# Configuration: 10x10 km domain
+config = physrag.config.SimulationConfig(
+    lon_range=(-10.0, 10.0),
+    lat_range=(-10.0, 10.0),
+    nx=50,
+    ny=50,
+    t_final=50.0,
+    dt=0.5,
+    gravity=9.81,
+    bc_lower=(0, 0),
+    bc_upper=(0, 0),
+    output_dir="output_simple",
 )
 
-# Interpolate on regular grid
-lon_grid, lat_grid = np.meshgrid(
-    np.linspace(-87.25, -87.05, 50),
-    np.linspace(30.2, 30.4, 50)
-)
-interpolated, uncertainties = interp.interpolate(
-    lon_grid.flatten(),
-    lat_grid.flatten()
-)
+# Initialize solver
+solver = physrag.solver.SWESolver(config=config)
 
-print(interpolated.reshape(lon_grid.shape))
+# Flat seafloor at -10m depth
+bathymetry = -10.0 * np.ones((config.ny, config.nx))
+solver.set_bathymetry(bathymetry)
+
+# Gaussian hump initial condition
+x, y = solver.mapper.coord_to_metric(solver.X_coord, solver.Y_coord)
+h_init = 2.0 * np.exp(-0.01 * (x**2 + y**2))
+initial_condition = np.stack([
+    h_init,
+    np.zeros_like(h_init),
+    np.zeros_like(h_init),
+], axis=0)
+solver.set_initial_condition(initial_condition)
+
+# Run simulation
+solver.setup_solver()
+solutions = solver.solve()
+
+print(f"✓ Simulation complete!")
+print(f"  Generated {solutions.shape[0]} output frames")
 ```
 
-### With tidalflow Integration
+Run it:
+
+```bash
+python simple_simulation.py
+```
+
+### Example 2: Using Real GEBCO Bathymetry
+
+Create a file `gebco_simulation.py`:
+
 ```python
-from physrag.integrations.tidalflow_providers import (
-    BathymetryFromGEBCO,
-    WaterLevelInterpolationProvider,
-)
-import tidalflow
+import physrag
 import numpy as np
 
-extent = (-87.23, -87.09, 30.20, 30.40)
-
-# Create providers using physrag
-bath_provider = BathymetryFromGEBCO(extent=extent)
-water_provider = WaterLevelInterpolationProvider(
-    lon=np.array([-87.2, -87.1, -87.15]),
-    lat=np.array([30.3, 30.35, 30.25]),
-    values=np.array([1.2, 0.8, 1.0])
-)
-
-# Use with tidalflow
-config = tidalflow.config.SimulationConfig(
-    lon_range=(extent[0], extent[1]),
-    lat_range=(extent[2], extent[3]),
-    nx=40, ny=40,
-    t_final=1000.0,
+# Miami area
+config = physrag.config.SimulationConfig(
+    lon_range=(-80.1865, -80.0791),
+    lat_range=(25.6678, 25.9137),
+    nx=40,
+    ny=40,
+    t_final=500.0,
     dt=1.0,
+    gravity=9.81,
+    bc_lower=(1, 1),
+    bc_upper=(1, 1),
+    output_dir="output_miami",
+    multiple_output_times=True,
 )
 
-solver = tidalflow.solver.SWESolver(
-    config=config,
-    bathymetry_provider=bath_provider,
-    ic_provider=water_provider,
+# Initialize solver
+solver = physrag.solver.SWESolver(config=config)
+
+# Load GEBCO bathymetry
+bathymetry = physrag.utils.interpolate_gebco_on_grid(
+    X=solver.X_coord,
+    Y=solver.Y_coord,
+    nc_path="data/gebco_2025_miami.nc"
+)
+bathymetry[np.isnan(bathymetry)] = 0.0
+solver.set_bathymetry(bathymetry)
+
+# Initial condition: 20 cm water level rise
+h_init = 0.2 * np.ones((config.ny, config.nx))
+initial_condition = np.stack([
+    h_init,
+    np.zeros_like(h_init),
+    np.zeros_like(h_init),
+], axis=0)
+solver.set_initial_condition(initial_condition)
+
+# Run simulation
+solver.setup_solver()
+solutions = solver.solve()
+
+print(f"✓ Simulation complete!")
+
+# Visualize
+if solver.rank == 0:
+    physrag.utils.animate_solution(
+        output_path=config.output_dir,
+        frames=None,
+        wave_treshold=1e-2,
+        save=False,
+    )
+```
+
+Run it:
+
+```bash
+python gebco_simulation.py
+```
+
+### Example 3: With Observations Data
+
+Create a file `data_integration_simulation.py`:
+
+```python
+import physrag
+import numpy as np
+import pandas as pd
+
+# Load tide gauge observations
+gauge_data = pd.read_csv("data/tide_observations.csv")
+
+# Configuration for simulation
+config = physrag.config.SimulationConfig(
+    lon_range=(-80.2, -80.0),
+    lat_range=(25.6, 25.95),
+    nx=40,
+    ny=40,
+    t_final=600.0,
+    dt=1.0,
+    gravity=9.81,
+    bc_lower=(1, 1),
+    bc_upper=(1, 1),
+    output_dir="output_with_data",
+    multiple_output_times=True,
 )
 
-solver.initialize_data_from_providers()
-result = solver.solve()
+# Initialize solver
+solver = physrag.solver.SWESolver(config=config)
+
+# Load bathymetry
+bathymetry = physrag.utils.interpolate_gebco_on_grid(
+    X=solver.X_coord,
+    Y=solver.Y_coord,
+    nc_path="data/gebco_2025_miami.nc"
+)
+bathymetry[np.isnan(bathymetry)] = 0.0
+solver.set_bathymetry(bathymetry)
+
+# Interpolate observations to grid
+interpolator = physrag.data_interpolation.SparseDataInterpolator(
+    x=gauge_data['longitude'].values,
+    y=gauge_data['latitude'].values,
+    values=gauge_data['water_level'].values,
+    method='rbf'
+)
+
+h_init, uncertainty = interpolator.interpolate(
+    solver.X_coord.flatten(),
+    solver.Y_coord.flatten()
+)
+h_init = h_init.reshape(solver.X_coord.shape)
+h_init = np.maximum(h_init, 0.1)  # Ensure minimum depth
+
+initial_condition = np.stack([
+    h_init,
+    np.zeros_like(h_init),
+    np.zeros_like(h_init),
+], axis=0)
+solver.set_initial_condition(initial_condition)
+
+# Run simulation
+solver.setup_solver()
+solutions = solver.solve()
+
+print(f"✓ Simulation complete!")
+print(f"  Initial water level range: {h_init.min():.3f} to {h_init.max():.3f} m")
+print(f"  Interpolation uncertainty: ±{uncertainty.mean():.3f} m")
 ```
 
 ---
 
-## Installation Troubleshooting
+## Common First Steps
 
-### ImportError: No module named 'physrag'
+### Download GEBCO Bathymetry
+
+PhysRAG-SWE can fetch GEBCO automatically:
+
+```python
+import physrag
+
+extent = (-80.1865, -80.0791, 25.6678, 25.9137)
+
+bathymetry_df = physrag.bathymetry_retrieval.fetch_gebco_opendap(
+    extent=extent,
+    output_path="data/gebco_miami.csv"
+)
+
+print(f"Downloaded {len(bathymetry_df)} bathymetry points")
+```
+
+Or manually:
+
+1. Go to https://www.gebco.net/data_and_products/gridded_bathymetry_data/
+2. Select your region
+3. Download **NetCDF format**
+4. Save to `data/gebco_*.nc`
+
+### Prepare Observation Data
+
+Create a CSV file with tide gauge observations:
+
+```csv
+station_id,longitude,latitude,water_level,timestamp
+G001,-80.18,25.75,0.15,2023-09-01T00:00:00
+G002,-80.10,25.70,0.12,2023-09-01T00:00:00
+G003,-80.13,25.80,0.18,2023-09-01T00:00:00
+```
+
+Load and use:
+
+```python
+import pandas as pd
+import physrag
+
+observations = pd.read_csv("data/tide_observations.csv")
+
+# Filter by geographic extent
+observations = physrag.rag_data_retrieval.read_csv_extent(
+    csv_path="data/tide_observations.csv",
+    extent=(-80.2, -80.0, 25.6, 25.95),
+    lat_col="latitude",
+    lon_col="longitude"
+)
+```
+
+### Run with MPI Parallelization
+
+For larger simulations, use multiple processors:
+
 ```bash
-# Make sure installation succeeded
-pip install -e .
+# Run with 4 processors
+mpiexec -n 4 python gebco_simulation.py
+```
 
-# Then verify again
+Or in Python:
+
+```python
+solver = physrag.solver.SWESolver(config=config)
+
+# Check MPI settings
+print(f"Running on {solver.size} processors")
+print(f"This processor is rank {solver.rank}")
+
+# Only rank 0 does I/O
+if solver.rank == 0:
+    print("Output will be saved from this process")
+```
+
+---
+
+## Troubleshooting
+
+### "ModuleNotFoundError: No module named 'physrag'"
+
+The package isn't installed or environment isn't activated:
+
+```bash
+# Activate environment
+conda activate physrag-swe
+
+# Verify installation
 python -c "import physrag; print(physrag.__file__)"
+
+# If not in environment, reinstall
+pip install -e /path/to/physrag-swe
 ```
 
-### ImportError: No module named 'tidalflow'
-You're trying to use tidalflow integration without proper setup.
+### "ModuleNotFoundError: No module named 'clawpack'"
 
-**Solution:** Install tidalflow (see [Using with tidalflow](#using-with-tidalflow) above)
+PyClaw isn't installed:
 
 ```bash
-# Check if you're in the right environment
-conda activate tidalflow
-python -c "import tidalflow; print('OK')"
+conda activate physrag-swe
+conda install -c conda-forge clawpack
 ```
 
-### ModuleNotFoundError with integration
-```bash
-# Make sure you're in the conda environment
-conda activate tidalflow
+### "ImportError: cannot import name 'PyClaw'"
 
-# Then try again
-python your_script.py
+Old version of PyClaw. Update it:
+
+```bash
+conda activate physrag-swe
+conda update -c conda-forge clawpack
 ```
 
-### tidalflow installation fails
-Check that all conda dependencies are available:
-```bash
-cd TidalFlow-SWE
-conda env create -f environment.yml
-conda activate tidalflow
+### "Simulation unstable (NaN output)"
+
+CFL condition violated. Reduce time step:
+
+```python
+config = physrag.config.SimulationConfig(
+    # ... other parameters
+    dt=0.5,  # Smaller time step
+    cfl_desired=0.8,  # More conservative
+)
+```
+
+### "GEBCO download fails"
+
+Check internet connection and server availability:
+
+```python
+import physrag
+
+# Try downloading with timeout
+try:
+    df = physrag.bathymetry_retrieval.fetch_gebco_opendap(
+        extent=extent,
+        timeout=120  # 2 minute timeout
+    )
+except Exception as e:
+    print(f"Download failed: {e}")
+    print("Download manually from https://www.gebco.net/")
 ```
 
 ---
 
 ## Next Steps
 
-- **API Details:** See [API Reference](./api.md)
-- **Design & Architecture:** See [Architecture Guide](./architecture.md)
-- **Usage Patterns:** See [Usage Guides](./guides.md)
-- **All Modules:** See [Module Reference](../physrag/index.md)
+1. **Run the examples** — Try `simple_simulation.py`, `gebco_simulation.py`, and `data_integration_simulation.py`
+
+2. **Read the documentation**
+   - [Architecture Overview](./architecture.md) — Design & concepts
+   - [API Reference](./classes/data_providers.md) — Detailed API docs
+   - [Bathymetry Guide](./classes/bathymetry.md) — GEBCO usage
+   - [Interpolation Guide](./classes/data_interpolation.md) — Data integration
+
+3. **Explore example scripts** — See `examples/` folder for more complete examples
+
+4. **Check results**
+   - Solutions saved to `output_*/`
+   - Read with `physrag.utils.read_solutions()`
+   - Visualize with `physrag.utils.animate_solution()`
+
+5. **Customize for your domain**
+   - Adjust `lon_range`, `lat_range` for your region
+   - Load proper GEBCO bathymetry
+   - Integrate your observation data
+   - Add wind forcing for storms
+
+---
+
+## Help & Support
+
+- **Questions?** Open an [issue on GitHub](https://github.com/yourrepo/physrag-swe/issues)
+- **Found a bug?** [Report it](https://github.com/yourrepo/physrag-swe/issues/new)
+- **Contributing?** See [Contributing Guide](../CONTRIBUTING.md)
+
+---
+

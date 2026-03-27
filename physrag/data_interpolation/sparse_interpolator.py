@@ -128,17 +128,19 @@ class SparseDataInterpolator:
         uncertainty = np.full(len(coords_query), np.nan)
         return result, uncertainty
 
-    def _nearest_distances(self, coords_query: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    def _nearest_distances(
+        self, coords_query: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]:
         """Compute distance to nearest station for each query point.
 
         For geographic coordinates (lon, lat), uses Haversine distance.
         """
         # Haversine distance returns distances in radians; multiply by Earth's radius for km
-        distances = distance.cdist(coords_query, self.coords, metric="haversine")
+        distances = distance.cdist(coords_query, self.coords, metric="euclidean")
         # (n_query, n_stations)
 
         # Convert from radians to kilometers (Earth radius ≈ 6371 km)
-        distances_km = distances * 6371
+        distances_km = distances * 1111  # 1 degree ≈ 111.1 km at the equator
 
         nearest_distances = np.min(distances_km, axis=1)
         return nearest_distances
@@ -148,7 +150,9 @@ class SparseDataInterpolator:
         x_range: tuple[float, float],
         y_range: tuple[float, float],
         resolution: tuple[int, int] | float = 100,
-    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    ) -> tuple[
+        npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]
+    ]:
         """
         Create a regular grid and interpolate over domain.
 

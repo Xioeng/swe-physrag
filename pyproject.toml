@@ -9,7 +9,7 @@ description = "Physical retrieval-augmented generation: Data retrieval and inter
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Jose Fuentes", email = "jfuen099@fiu.edu"},
 ]
 requires-python = ">=3.9"
 classifiers = [

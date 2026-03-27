@@ -1,130 +1,268 @@
 # API Reference
 
-Complete API documentation for physrag modules.
+Complete API documentation for PhysRAG-SWE modules and classes.
+
+## physrag.config
+
+Configuration management for SWE simulations.
+
+### Classes
+
+#### `SimulationConfig`
+
+Dataclass for complete simulation configuration.
+
+**Attributes:**
+- `lon_range` (tuple) — Longitude range as (west, east)
+- `lat_range` (tuple) — Latitude range as (south, north)
+- `nx` (int) — Number of grid points in x-direction (longitude)
+- `ny` (int) — Number of grid points in y-direction (latitude)
+- `t_start` (float, default 0.0) — Start time in seconds
+- `t_end` (float) — End time in seconds
+- `dx` (float, optional) — Grid spacing in meters (computed if not provided)
+- `dy` (float, optional) — Grid spacing in meters (computed if not provided)
+- `cfl` (float, default 0.9) — Courant-Friedrichs-Lewy number for stability
+- `num_output_times` (int, default 10) — Number of output snapshots
+- `coordinate_system` (str, default 'geographic') — 'geographic' or 'metric'
+- `use_mpi` (bool, default False) — Enable MPI parallelization
+- `num_processors` (int, default 1) — Number of MPI processes
+- `boundary_conditions` (list, default [0, 0, 0, 0]) — [west, east, south, north] (0=wall, 1=open, 2=periodic)
+
+**Methods:**
+
+##### `validate()`
+Validate configuration parameters. Raises `ConfigurationError` if invalid.
+
+**Example:**
+```python
+from physrag.config import SimulationConfig
+
+config = SimulationConfig(
+    lon_range=(-80.1865, -80.0791),
+    lat_range=(25.6678, 25.9137),
+    nx=40,
+    ny=40,
+    t_end=3600,  # 1 hour simulation
+    cfl=0.9,
+    boundary_conditions=[0, 1, 0, 1]  # walls on west/south, open on east/north
+)
+config.validate()
+```
+
+---
+
+## physrag.solver
+
+Main SWE solver and integration module.
+
+### Classes
+
+#### `SWESolver`
+
+Core solver for 2D Shallow Water Equations using PyClaw.
+
+**Constructor:**
+```python
+SWESolver(config: SimulationConfig)
+```
+
+**Parameters:**
+- `config` — SimulationConfig instance
+
+**Methods:**
+
+##### `set_bathymetry(bathymetry, coordinate_type='geographic')`
+Set bathymetry field for simulation.
+
+**Parameters:**
+- `bathymetry` (numpy.ndarray) — 2D bathymetry array (shape: ny×nx)
+- `coordinate_type` (str) — 'geographic' or 'metric'
+
+**Raises:**
+- `ValueError` — Invalid array shape or coordinate type
+
+**Example:**
+```python
+import numpy as np
+solver = physrag.solver.SWESolver(config)
+
+# Load bathymetry
+bathy = np.load('bathymetry.npy')
+solver.set_bathymetry(bathy, coordinate_type='geographic')
+```
+
+---
+
+##### `set_initial_condition(water_surface, velocity_x=None, velocity_y=None)`
+Set initial water surface elevation and optional velocities.
+
+**Parameters:**
+- `water_surface` (numpy.ndarray) — 2D water surface elevation (m, shape: ny×nx)
+- `velocity_x` (numpy.ndarray, optional) — 2D x-velocity (m/s)
+- `velocity_y` (numpy.ndarray, optional) — 2D y-velocity (m/s)
+
+**Example:**
+```python
+# Start with Gaussian bump
+h = np.exp(-((x - x0)**2 + (y - y0)**2) / sigma**2)
+solver.set_initial_condition(h)
+```
+
+---
+
+##### `set_wind_forcing(wind_x, wind_y, ramp_time=300)`
+Set wind stress forcing (hurricane or constant wind).
+
+**Parameters:**
+- `wind_x` (float or callable) — Zonal wind stress (Pa) or function(t) → float
+- `wind_y` (float or callable) — Meridional wind stress (Pa) or function(t) → float
+- `ramp_time` (float) — Time to ramp up wind (seconds)
+
+**Example:**
+```python
+# Hurricane wind stress
+def wind_x(t):
+    if t < 300:
+        return t / 300 * 100  # Ramp up to 100 Pa
+    else:
+        return 100  # Constant stress
+
+solver.set_wind_forcing(wind_x=wind_x, wind_y=0, ramp_time=300)
+```
+
+---
+
+##### `setup_solver()`
+Initialize and validate solver setup. Must be called before `solve()`.
+
+**Raises:**
+- `ConfigurationError` — Missing required setup (bathymetry, etc.)
+
+---
+
+##### `solve()`
+Execute SWE simulation.
+
+**Returns:**
+- `SWEResult` — Solution container with output times and state variables
+
+**Example:**
+```python
+solutions = solver.solve()
+print(f"Solution shape: {solutions.h.shape}")  # (num_times, ny, nx)
+```
+
+---
+
+#### `CoordinateMapper`
+
+Transform coordinates between geographic (lon/lat) and metric (x/y) spaces.
+
+**Constructor:**
+```python
+CoordinateMapper(config: SimulationConfig)
+```
+
+**Methods:**
+
+##### `geographic_to_metric(lon, lat)`
+Convert geographic to metric coordinates.
+
+**Parameters:**
+- `lon` (float or numpy.ndarray) — Longitude
+- `lat` (float or numpy.ndarray) — Latitude
+
+**Returns:**
+- `tuple` — (x, y) in meters
+
+---
+
+##### `metric_to_geographic(x, y)`
+Convert metric to geographic coordinates.
+
+**Parameters:**
+- `x` (float or numpy.ndarray) — X-coordinate (meters)
+- `y` (float or numpy.ndarray) — Y-coordinate (meters)
+
+**Returns:**
+- `tuple` — (lon, lat)
+
+---
 
 ## physrag.bathymetry_retrieval
 
-Module for downloading and processing GEBCO bathymetry data via OPeNDAP.
+Bathymetry data acquisition from GEBCO and custom sources.
 
 ### Functions
 
 #### `download_gebco_ascii(extent, keep_csv=False, keep_txt=False)`
 
-Download GEBCO bathymetry data for a geographic extent.
+Download GEBCO bathymetry data via OPeNDAP.
 
 **Parameters:**
-- `extent` (tuple) — Bounding box as (west, east, south, north) in lon/lat coordinates
-- `keep_csv` (bool, default False) — Save data as CSV file
-- `keep_txt` (bool, default False) — Keep temporary ASCII file
+- `extent` (tuple) — Bounding box (west, east, south, north)
+- `keep_csv` (bool) — Save as CSV
+- `keep_txt` (bool) — Keep temporary ASCII file
 
 **Returns:**
-- `pandas.DataFrame` — GEBCO data with columns: Longitude, Latitude, Elevation
+- `pandas.DataFrame` — Columns: longitude, latitude, elevation (meters)
 
 **Raises:**
-- `ValueError` — Invalid extent format
-- `ConnectionError` — Failed to connect to OPeNDAP server
-
-**Example:**
-```python
-df = physrag.bathymetry_retrieval.download_gebco_ascii(
-    extent=(-87.23, -87.09, 30.20, 30.40),
-    keep_csv=True
-)
-print(df[['Longitude', 'Latitude', 'Elevation']].head())
-```
+- `ConnectionError` — OPeNDAP server unavailable
+- `ValueError` — Invalid extent
 
 ---
 
 #### `get_gebco_data(extent, keep_csv=False, keep_txt=False)`
 
-Download GEBCO data and return paths (DataFrame, CSV path, TXT path).
-
-**Parameters:**
-- `extent` (tuple) — Bounding box (west, east, south, north)
-- `keep_csv` (bool) — Save CSV file
-- `keep_txt` (bool) — Keep temporary ASCII file
+Download GEBCO and return DataFrame with file paths.
 
 **Returns:**
 - `tuple` — (DataFrame, csv_path, txt_path)
 
-**Example:**
+---
+
+### Classes
+
+#### `BathymetryProvider`
+
+Abstract base class for bathymetry sources.
+
+**Methods:**
+
+##### `get_bathymetry(extent, resolution=None)`
+Retrieve bathymetry for geographic extent.
+
+**Parameters:**
+- `extent` (tuple) — Bounding box (west, east, south, north)
+- `resolution` (float, optional) — Grid spacing in degrees
+
+**Returns:**
+- `numpy.ndarray` — 2D bathymetry array
+
+---
+
+#### `GEBCOBathymetryProvider`
+
+Built-in provider for GEBCO bathymetry retrieval.
+
+**Constructor:**
 ```python
-df, csv_path, txt_path = physrag.bathymetry_retrieval.get_gebco_data(
-    extent=(-87.23, -87.09, 30.20, 30.40),
-    keep_csv=True
-)
-print(f"CSV saved to: {csv_path}")
+GEBCOBathymetryProvider(cache_dir='./gebco_data')
 ```
 
----
+**Methods:**
 
-## physrag.rag_data_retrieval
-
-Module for filtering and processing CSV data by geographic extent.
-
-### Functions
-
-#### `read_csv_extent(csv_path, extent, lat_col, lon_col, columns=None, timestamp_col=None, start_time=None, end_time=None)`
-
-Load CSV file and filter by geographic extent and optional time range.
+##### `get_bathymetry(extent, resolution=None, method='nearest')`
+Retrieve GEBCO bathymetry for extent.
 
 **Parameters:**
-- `csv_path` (str) — Path to CSV file
 - `extent` (tuple) — Bounding box (west, east, south, north)
-- `lat_col` (str) — Column name for latitude
-- `lon_col` (str) — Column name for longitude
-- `columns` (list, optional) — Specific columns to load (None loads all)
-- `timestamp_col` (str, optional) — Column name for timestamps
-- `start_time` (str, optional) — ISO 8601 start time (e.g., "2024-02-01T00:00:00Z")
-- `end_time` (str, optional) — ISO 8601 end time
+- `resolution` (float, optional) — Grid spacing in degrees
+- `method` (str) — Interpolation method ('nearest', 'linear', 'cubic')
 
 **Returns:**
-- `pandas.DataFrame` — Filtered data
-
-**Example:**
-```python
-df = physrag.rag_data_retrieval.read_csv_extent(
-    csv_path="weather.csv",
-    extent=(-87.23, -87.09, 30.20, 30.40),
-    lat_col="latitude_decimal_degrees",
-    lon_col="longitude_decimal_degrees",
-    columns=["station_name", "water_level_m_mllw", "temperature_c"],
-    timestamp_col="timestamp_utc_iso8601",
-    start_time="2024-02-01T00:00:00Z",
-    end_time="2024-02-02T00:00:00Z"
-)
-```
-
----
-
-#### `filter_by_extent(df, extent, lat_col, lon_col)`
-
-Filter existing DataFrame by geographic extent.
-
-**Parameters:**
-- `df` (pandas.DataFrame) — Input DataFrame
-- `extent` (tuple) — Bounding box (west, east, south, north)
-- `lat_col` (str) — Latitude column name
-- `lon_col` (str) — Longitude column name
-
-**Returns:**
-- `pandas.DataFrame` — Filtered DataFrame
-
----
-
-#### `load_csv(csv_path, columns=None, timestamp_col=None, start_time=None, end_time=None)`
-
-Load CSV file with optional column and temporal filtering.
-
-**Parameters:**
-- `csv_path` (str) — Path to CSV file
-- `columns` (list, optional) — Columns to load
-- `timestamp_col` (str, optional) — Column with timestamps
-- `start_time` (str, optional) — ISO 8601 start time
-- `end_time` (str, optional) — ISO 8601 end time
-
-**Returns:**
-- `pandas.DataFrame` — Loaded data
+- `numpy.ndarray` — 2D bathymetry array on regular grid
 
 ---
 
@@ -136,43 +274,49 @@ Module for interpolating sparse 2D point measurements.
 
 #### `SparseDataInterpolator`
 
-Interpolator for 2D sparse data using RBF (Radial Basis Function).
+Interpolator for sparse 2D data with multiple methods.
 
 **Constructor:**
 ```python
-SparseDataInterpolator(x, y, values)
+SparseDataInterpolator(x, y, values, method='rbf')
 ```
 
 **Parameters:**
 - `x` (array-like) — X coordinates (longitude)
 - `y` (array-like) — Y coordinates (latitude)
 - `values` (array-like) — Data values at (x, y) points
+- `method` (str) — Interpolation method ('rbf', 'kriging', 'idw', 'linear')
 
 **Methods:**
 
-##### `interpolate(x_new, y_new)`
+##### `interpolate(x_new, y_new, return_uncertainty=True)`
 
 Interpolate values at new points.
 
 **Parameters:**
-- `x_new` (array-like) — New X coordinates
-- `y_new` (array-like) — New Y coordinates
+- `x_new` (array-like or ndarray) — New X coordinates
+- `y_new` (array-like or ndarray) — New Y coordinates
+- `return_uncertainty` (bool) — Return estimated uncertainties
 
 **Returns:**
-- `tuple` — (interpolated_values, uncertainties)
-  - `interpolated_values` (ndarray) — Interpolated values
-  - `uncertainties` (ndarray) — Estimated uncertainties
+- `tuple` or `ndarray` — If return_uncertainty=True: (values, uncertainty), else just values
 
 **Example:**
 ```python
 import numpy as np
 import physrag
 
-# Create interpolator from measurements
+# Station data: water level measurements
+stations_lon = np.array([-87.2, -87.1, -87.15])
+stations_lat = np.array([30.3, 30.35, 30.25])
+measurements = np.array([1.2, 0.8, 1.0])  # Water level in meters
+
+# Create interpolator
 interp = physrag.data_interpolation.SparseDataInterpolator(
-    x=np.array([-87.2, -87.1, -87.15]),
-    y=np.array([30.3, 30.35, 30.25]),
-    values=np.array([1.2, 0.8, 1.0])
+    x=stations_lon,
+    y=stations_lat,
+    values=measurements,
+    method='rbf'
 )
 
 # Interpolate on regular grid
@@ -187,22 +331,116 @@ interp_values, uncertainties = interp.interpolate(
 
 # Reshape to grid
 interp_grid = interp_values.reshape(lon_mg.shape)
-uncert_grid = uncertainties.reshape(lon_mg.shape)
 ```
 
 ---
 
-## physrag.integrations.tidalflow_providers
+## physrag.result
 
-Optional integration module for adapting physrag data to tidalflow.
-
-**Requires:** tidalflow installed (conda environment setup)
+Solution output and analysis module.
 
 ### Classes
 
-#### `BathymetryFromGEBCO`
+#### `SWEResult`
 
-Bathymetry provider using GEBCO data for tidalflow.
+Container for SWE simulation results.
+
+**Attributes:**
+- `h` (ndarray) — Water surface elevation at each time step (shape: num_times × ny × nx)
+- `u` (ndarray) — X-velocity component
+- `v` (ndarray) — Y-velocity component
+- `time` (ndarray) — Output times (seconds)
+- `coord_meshgrid` (tuple) — (lon_mg, lat_mg) meshgrids
+- `bathymetry` (ndarray) — Bathymetry array (ny × nx)
+- `config` (SimulationConfig) — Original simulation configuration
+
+**Methods:**
+
+##### `get_time_series(i, j, variable='h')`
+Extract time series at grid point (i, j).
+
+**Parameters:**
+- `i`, `j` (int) — Grid indices
+- `variable` (str) — 'h' (elevation), 'u' (x-velocity), 'v' (y-velocity)
+
+**Returns:**
+- `ndarray` — Time series array
+
+---
+
+##### `max_elevation()`
+Compute maximum water elevation over time at each grid point.
+
+**Returns:**
+- `ndarray` — Max elevation field (ny × nx)
+
+---
+
+##### `inundation_depth()`
+Compute inundation depth (water surface - bathymetry).
+
+**Returns:**
+- `ndarray` — Inundation at final time (ny × nx)
+
+---
+
+##### `export_netcdf(filename)`
+Export solution to NetCDF format.
+
+**Parameters:**
+- `filename` (str) — Output file path
+
+---
+
+## physrag.providers
+
+Data provider base classes and protocols.
+
+### Classes
+
+#### `DataProvider`
+
+Abstract base class for all data providers.
+
+**Methods:**
+
+##### `get_data(extent, **kwargs)`
+Retrieve data for geographic extent.
+
+**Returns:**
+- Depends on provider type
+
+---
+
+#### `InitialConditionProvider`
+
+Provider for initial water surface elevation.
+
+**Methods:**
+
+##### `get_initial_condition(extent, resolution)`
+Get initial water surface elevation.
+
+**Returns:**
+- `ndarray` — 2D initial elevation field
+
+---
+
+#### `WindProvider`
+
+Provider for wind forcing parameters.
+
+**Methods:**
+
+##### `get_wind_stress(time, extent)`
+Get wind stress components at time.
+
+**Parameters:**
+- `time` (float) — Time in seconds
+- `extent` (tuple) — Geographic extent
+
+**Returns:**
+- `tuple` — (wind_x_stress_Pa, wind_y_stress_Pa)
 
 **Constructor:**
 ```python
