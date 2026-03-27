@@ -5,18 +5,23 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Development Status](https://img.shields.io/badge/status-Alpha-yellow.svg)]()
 
-A Python-based physics-informed retrieval-augmented generation (RAG) framework for 2D Shallow Water Equations (SWE) simulations. PhysRAG-SWE integrates real-world bathymetry data retrieval, sparse data interpolation, and PyClaw-based SWE solver to enable rapid modeling of storm surge, tsunami propagation, and coastal flooding scenarios.
+A Python-based physics-informed retrieval-augmented generation (RAG) framework for 2D Shallow Water Equations (SWE) simulations. PhysRAG-SWE provides **automatic data retrieval and preprocessing** for TidalFlow-SWE, integrating GEBCO bathymetry data retrieval, sparse data interpolation, and CSV filtering. Together with TidalFlow's PyClaw-based SWE solver, it enables rapid modeling of storm surge, tsunami propagation, and coastal flooding scenarios.
 
 ## Features
 
+### PhysRAG-SWE (Data Retrieval & Preprocessing)
 - ✅ **Automatic Bathymetry Retrieval** — Download GEBCO data via OPeNDAP or local NetCDF
 - ✅ **Geospatial Data Filtering** — Extract CSV observations by geographic and temporal extent
 - ✅ **Sparse Data Interpolation** — RBF and kriging methods for point measurements
+- ✅ **TidalFlow Integration** — Adapters to seamlessly integrate data into TidalFlow solvers
+- ✅ **Data Caching** — Efficient local storage of retrieved bathymetry and observations
+
+### TidalFlow-SWE (Solver Engine, Required)
 - ✅ **2D Shallow Water Equations Solver** — Roe-type Riemann solver with bathymetric source terms
 - ✅ **Real Bathymetry Support** — Automatic integration of GEBCO data into simulations
 - ✅ **Wind Forcing** — Hurricane and storm surge simulations
 - ✅ **MPI Parallelization** — Distribute computations across multiple processors
-- ✅ **Configuration Management** — JSON-based configuration with validation
+- ✅ **Configuration Management** — YAML/JSON-based configuration with validation
 - ✅ **Visualization Tools** — Animation and 2D/3D plotting utilities
 - ✅ **Production-Ready** — Tested on real coastal domains with validation data
 
@@ -93,54 +98,53 @@ Pre-computed example solutions for four major coastal regions. Visualizations sh
 
 ## Architecture Overview
 
-PhysRAG-SWE follows a layered architecture that separates data retrieval, interpolation, and simulation:
+PhysRAG-SWE and TidalFlow-SWE work together in a layered architecture:
+- **PhysRAG (Preprocessing Layer)**: Automatic data retrieval, filtering, and interpolation
+- **TidalFlow (Solver Layer)**: Physics-based simulator
 
 ```
-┌─────────────────────────────────────────┐
-│   Data Retrieval Layer                  │
-│   ├─ GEBCO Bathymetry (OPeNDAP/NetCDF) │
-│   ├─ CSV Geographic Filtering           │
-│   └─ Temporal/Spatial Extent Selection  │
-└─────────────┬───────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────┐
-│   Data Interpolation Layer              │
-│   ├─ Sparse 2D Interpolation            │
-│   ├─ RBF Methods                        │
-│   ├─ Kriging Support                    │
-│   └─ Uncertainty Quantification         │
-└─────────────┬───────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────┐
-│   SimulationConfig                      │
-│   (Domain, Time, Physics Params)        │
-└─────────────┬───────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────┐
-│      SWESolver                          │
-│  (Integrates PyClaw + SWE Physics)      │
-│  ├─ Geographic Coordinate Mapping      │
-│  ├─ Riemann Solver (Roe-type)          │
-│  ├─ Bathymetric Source Terms           │
-│  └─ Wind Forcing Integration           │
-└─────────────┬───────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────┐
-│   SWEResult (Solutions + Metadata)      │
-│   └─ Solution Arrays + Coordinates      │
-└─────────────┬───────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────┐
-│   Visualization & Analysis              │
-│   ├─ 2D Animations with Cartopy        │
-│   ├─ 3D Surface Plots                  │
-│   └─ Custom Matplotlib rcParams         │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────── PhysRAG Layer ───────────────────────────────┐
+│                                                                                  │
+│  ┌──────────────────────────────────────────────────────────────────────────┐   │
+│  │ Data Retrieval & Preprocessing                                           │   │
+│  │  ├─ GEBCO Bathymetry Retrieval (OPeNDAP/NetCDF)                         │   │
+│  │  ├─ CSV Geographic & Temporal Filtering                                 │   │
+│  │  ├─ Sparse Data Interpolation (RBF/Kriging)                            │   │
+│  │  └─ Data Validation & Caching                                           │   │
+│  └────────────────┬─────────────────────────────────────────────────────────┘   │
+│                  │                                                               │
+│                  │ (Adapters to TidalFlow Provider Interfaces)                   │
+│                  ▼                                                               │
+│  ┌──────────────────────────────────────────────────────────────────────────┐   │
+│  │ Integration Layer                                                        │   │
+│  │  ├─ BathymetryFromGEBCO (TidalFlow BathymetryProvider)                 │   │
+│  │  ├─ InitialConditionInterpolationProvider                              │   │
+│  │  └─ WindProviderInterpolationProvider                                   │   │
+│  └────────────────┬─────────────────────────────────────────────────────────┘   │
+└───────────────────┼──────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌───────────────────────────────── TidalFlow Layer ──────────────────────────────┐
+│                                                                                │
+│  SimulationConfig (Domain, Time, Physics Parameters)                          │
+│           │                                                                    │
+│           ▼                                                                    │
+│  ┌──────────────────────────────────────────────────────────────────────┐    │
+│  │ SWESolver ─ Integrates PyClaw + SWE Physics                          │    │
+│  │  ├─ Geographic Coordinate Mapping                                    │    │
+│  │  ├─ Riemann Solver (Roe-type, Bathymetric Source Terms)            │    │
+│  │  ├─ Wind Forcing Integration (Hurricane/Storm)                      │    │
+│  │  ├─ MPI Parallelization (Distributed Computing)                     │    │
+│  │  └─ Output Management (PyClaw format)                               │    │
+│  └────────────────┬─────────────────────────────────────────────────────┘    │
+│                   ▼                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐    │
+│  │ Visualization & Analysis (TidalFlow Utils)                           │    │
+│  │  ├─ 2D Animations with Cartopy                                       │    │
+│  │  ├─ 3D Surface Plots                                                 │    │
+│  │  └─ Result Serialization & Loading                                   │    │
+│  └──────────────────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -170,25 +174,28 @@ PhysRAG-SWE is designed for a wide range of coastal and hydrodynamic application
 | Feature | PhysRAG-SWE | TidalFlow-SWE | ADCIRC |
 |---------|:--:|:--:|:--:|
 | Python-based | ✅ | ✅ | ❌ |
-| Geographic coordinates | ✅ | ✅ | ✅ |
-| MPI Parallelization | ✅ | ✅ | ✅ |
-| Wind forcing | ✅ | ✅ | ✅ |
+| Geographic coordinates | — | ✅ | ✅ |
+| MPI Parallelization | — | ✅ | ✅ |
+| Wind forcing | — | ✅ | ✅ |
 | Real bathymetry (GEBCO) | ✅ | ✅ | ✅ |
-| Automatic bathymetry retrieval | ✅ | ⚠️ | ⚠️ |
-| Data interpolation tools | ✅ | ❌ | ❌ |
-| CSV data filtering | ✅ | ❌ | ❌ |
-| Visualization tools | ✅ | ✅ | ⚠️ |
-| Configuration via JSON | ✅ | ✅ | ❌ |
+| **Automatic bathymetry retrieval** | **✅** | ⚠️ | ⚠️ |
+| **Data interpolation tools** | **✅** | ❌ | ❌ |
+| **CSV data filtering** | **✅** | ❌ | ❌ |
+| Visualization tools | — | ✅ | ⚠️ |
+| Configuration management | — | ✅ | ❌ |
 | Data assimilation ready | ✅ | ⚠️ | ✅ |
-| Ease of use | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ |
-| Learning curve | Low | Low | High |
+| Easy integration | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ |
+
+**Note:** Blank cells indicate features are handled by the other package. PhysRAG-SWE and TidalFlow-SWE are complementary:
+- **PhysRAG**: Automatic data retrieval, interpolation, and preprocessing
+- **TidalFlow**: Physics solver, simulation, and analysis
 
 ---
 
 ## Installation
 
 > [!IMPORTANT]
-> **TidalFlow-SWE is a required dependency.** Follow the installation guide in the [TidalFlow-SWE repository](https://github.com/xioeng/TidalFlow-SWE) first, then proceed with PhysRAG-SWE installation below.
+> **TidalFlow-SWE is a required dependency.** PhysRAG-SWE acts as a data retrieval and preprocessing layer that feeds into TidalFlow's SWE solver. Follow the installation guide in the [TidalFlow-SWE repository](https://github.com/xioeng/TidalFlow-SWE) **first**, then proceed with PhysRAG-SWE installation.
 
 ### 1) Set up conda environment
 
@@ -271,11 +278,12 @@ print(f"Loaded {len(observations)} observations in domain")
 Complete end-to-end storm surge simulation:
 
 ```python
+import tidalflow
 import physrag
 import numpy as np
 
-# Configuration for Miami area
-config = physrag.config.SimulationConfig(
+# Configuration for Miami area (using TidalFlow's config)
+config = tidalflow.config.SimulationConfig(
     lon_range=(-80.1865, -80.0791),
     lat_range=(25.6678, 25.9137),
     nx=40,
@@ -289,17 +297,18 @@ config = physrag.config.SimulationConfig(
     multiple_output_times=True,
 )
 
-# Initialize solver
-solver = physrag.solver.SWESolver(config=config)
+# Initialize solver (TidalFlow)
+solver = tidalflow.solver.SWESolver(config=config)
 
-# Load and interpolate GEBCO bathymetry
-bathymetry = physrag.utils.interpolate_gebco_on_grid(
-    X=solver.X_coord,
-    Y=solver.Y_coord,
-    nc_path="data/gebco_biscayne.nc"
+# Use PhysRAG's bathymetry provider with TidalFlow's solver
+from physrag.integrations.tidalflow_providers import BathymetryFromGEBCO
+
+bath_provider = BathymetryFromGEBCO(
+    extent=(-80.1865, -80.0791, 25.6678, 25.9137),
+    keep_csv=False
 )
-bathymetry[np.isnan(bathymetry)] = 0.0
-solver.set_bathymetry(bathymetry)
+# TidalFlow will use the provider to get bathymetry
+solver.set_bathymetry_provider(bath_provider)
 
 # Set initial condition
 x, y = solver.mapper.coord_to_metric(solver.X_coord, solver.Y_coord)
@@ -326,10 +335,10 @@ print(f"Simulation complete! Generated {solutions.shape[0]} output frames")
 > [!NOTE]
 > The `SimulationConfig` dataclass centralizes all simulation parameters. Configuration is validated automatically in `__post_init__()` to catch errors early.
 
-### SimulationConfig Dataclass
+### SimulationConfig Dataclass (TidalFlow)
 
 ```python
-config = physrag.config.SimulationConfig(
+config = tidalflow.config.SimulationConfig(
     # Domain
     lon_range=(-80.2, -80.0),      # Longitude range (degrees)
     lat_range=(25.6, 25.9),         # Latitude range (degrees)
@@ -364,7 +373,7 @@ config.validate()
 config.save("config.json")
 
 # Load configuration
-config = physrag.config.SimulationConfig.load("config.json")
+config = tidalflow.config.SimulationConfig.load("config.json")
 ```
 
 > [!IMPORTANT]
@@ -391,15 +400,20 @@ bc_upper=(1, 1)
 
 ## Class Reference
 
-Detailed API documentation for each class is maintained under `docs/classes/`.
+Detailed API documentation for each module is maintained under `docs/classes/`.
 
-- [Data Provider Documentation](docs/classes/data_providers.md): Bathymetry and CSV data retrieval interfaces
+### PhysRAG Documentation
+- [Data Provider Documentation](docs/classes/data_providers.md): PhysRAG data provider classes and interfaces
 - [Bathymetry Retrieval Documentation](docs/classes/bathymetry.md): GEBCO download and interpolation utilities
 - [Data Interpolation Documentation](docs/classes/data_interpolation.md): RBF and kriging methods for sparse data
-- [SWE Solver Documentation](docs/classes/swe_solver.md): SimulationConfig and SWESolver main classes
-- [SWE Result Documentation](docs/classes/swe_result.md): Result container and serialization methods
+
+### TidalFlow Documentation
+- [SWE Solver Documentation](docs/classes/swe_solver.md): TidalFlow's SimulationConfig and SWESolver classes
+- [SWE Result Documentation](docs/classes/swe_result.md): TidalFlow's result container and serialization methods
+
+### Additional Guides
 - [Getting Started Guide](docs/getting-started.md): Installation and quick start
-- [Architecture Guide](docs/architecture.md): Design principles and package structure
+- [Architecture Guide](docs/architecture.md): Design principles, workflow, and integration patterns
 
 These pages are the source of truth for API details; this README keeps only high-level usage.
 
@@ -501,11 +515,16 @@ print(f"Winter mean: {winter['water_level'].mean():.3f} m")
 End-to-end storm surge simulation with data integration:
 
 ```python
+import tidalflow
 import physrag
 import numpy as np
+from physrag.integrations.tidalflow_providers import (
+    BathymetryFromGEBCO,
+    InitialConditionInterpolationProvider,
+)
 
-# Configuration for storm surge scenario
-config = physrag.config.SimulationConfig(
+# Configuration for storm surge scenario (TidalFlow config)
+config = tidalflow.config.SimulationConfig(
     lon_range=(-80.1865, -80.0791),
     lat_range=(25.6678, 25.9137),
     nx=60,
@@ -520,19 +539,17 @@ config = physrag.config.SimulationConfig(
     frame_interval=5,
 )
 
-# Initialize solver
-solver = physrag.solver.SWESolver(config=config)
+# Initialize TidalFlow solver
+solver = tidalflow.solver.SWESolver(config=config)
 
-# Load GEBCO bathymetry
-bathymetry = physrag.utils.interpolate_gebco_on_grid(
-    X=solver.X_coord,
-    Y=solver.Y_coord,
-    nc_path="data/gebco_2025_biscayne.nc"
+# Use PhysRAG's GEBCO provider
+bath_provider = BathymetryFromGEBCO(
+    extent=config.lon_range + config.lat_range,
+    keep_csv=False
 )
-bathymetry[np.isnan(bathymetry)] = 0.0
-solver.set_bathymetry(bathymetry)
+solver.set_bathymetry_provider(bath_provider)
 
-# Set initial condition from tide gauge data
+# Set initial condition from tide gauge data using PhysRAG
 observations = physrag.rag_data_retrieval.read_csv_extent(
     csv_path="data/tide_observations.csv",
     extent=config.lon_range + config.lat_range,
@@ -540,29 +557,13 @@ observations = physrag.rag_data_retrieval.read_csv_extent(
     lon_col="longitude"
 )
 
-# Interpolate observations onto grid
-interpolator = physrag.data_interpolation.SparseDataInterpolator(
-    x=observations['longitude'].values,
-    y=observations['latitude'].values,
+# Use PhysRAG's interpolator to create initial condition provider
+ic_provider = InitialConditionInterpolationProvider(
+    lon=observations['longitude'].values,
+    lat=observations['latitude'].values,
     values=observations['water_level'].values,
-    method='rbf'
 )
-
-h_init_data, _ = interpolator.interpolate(
-    solver.X_coord.flatten(),
-    solver.Y_coord.flatten()
-)
-h_init_data = h_init_data.reshape(solver.X_coord.shape)
-
-# Combine with bathymetry for full water depth
-h_init = np.maximum(h_init_data, 0.1)  # Minimum 10 cm
-
-initial_condition = np.stack([
-    h_init,
-    np.zeros_like(h_init),  # hu
-    np.zeros_like(h_init),  # hv
-], axis=0)
-solver.set_initial_condition(initial_condition)
+solver.set_initial_condition_provider(ic_provider)
 
 # Add wind forcing (Category 1 Hurricane: 96 mph)
 speed_mph = 96
@@ -587,15 +588,15 @@ print(f"Solution shape: {solutions.shape}")
 
 ### Example 4: Visualization and Analysis
 
-Analyze and visualize simulation results:
+Analyze and visualize simulation results (using TidalFlow utilities):
 
 ```python
-import physrag
+import tidalflow
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Load simulation results
-result = physrag.utils.read_solutions(
+# Load simulation results (TidalFlow utility)
+result = tidalflow.utils.read_solutions(
     outdir="output_storm_surge",
     frames_list=None,  # Load all frames
 )
@@ -645,8 +646,8 @@ h_max = solutions[:, 0, :, :].max(axis=(1, 2))
 frame_idx_max = np.argmax(h_max)
 print(f"\nMaximum water depth: {h_max[frame_idx_max]:.2f} m at t={times[frame_idx_max]:.1f} s")
 
-# Animation
-physrag.utils.animate_solution(
+# Animation (TidalFlow utility)
+tidalflow.utils.animate_solution(
     output_path="output_storm_surge",
     frames=None,
     wave_treshold=1e-2,
@@ -686,9 +687,9 @@ After running a simulation, the solver creates an output directory containing:
 
 ```python
 import numpy as np
-import physrag.utils as sim_utils
+import tidalflow.utils as sim_utils
 
-# Load saved data
+# Load saved data (TidalFlow utility)
 result = sim_utils.read_solutions(outdir="output_storm_surge")
 
 # Extract arrays
@@ -717,19 +718,19 @@ eta = h + bathymetry
 
 ## Utilities
 
-### Data Retrieval
+### PhysRAG Data Retrieval
 
 ```python
 from physrag.bathymetry_retrieval import fetch_gebco_opendap
 from physrag.rag_data_retrieval import read_csv_extent
 
-# Fetch GEBCO bathymetry
+# Fetch GEBCO bathymetry (PhysRAG)
 bathymetry_df = fetch_gebco_opendap(
     extent=(-80.2, -80.0, 25.6, 25.95),
     output_path="data/gebco_file.csv"
 )
 
-# Filter CSV observations
+# Filter CSV observations (PhysRAG)
 observations = read_csv_extent(
     csv_path="data/observations.csv",
     extent=(-80.2, -80.0, 25.6, 25.95),
@@ -738,12 +739,12 @@ observations = read_csv_extent(
 )
 ```
 
-### Data Interpolation
+### PhysRAG Data Interpolation
 
 ```python
 from physrag.data_interpolation import SparseDataInterpolator
 
-# Create interpolator
+# Create interpolator (PhysRAG)
 interpolator = SparseDataInterpolator(
     x=observations['longitude'].values,
     y=observations['latitude'].values,
@@ -759,22 +760,22 @@ gridded_data, uncertainty = interpolator.interpolate(
 )
 ```
 
-### Visualization
+### TidalFlow Visualization
 
 ```python
-from physrag.utils import animate_solution, plot_solution, read_solutions
+from tidalflow.utils import animate_solution, plot_solution, read_solutions
 
-# Read solutions
+# Read solutions (TidalFlow)
 result = read_solutions(outdir="output_dir")
 
-# Plot single frame
+# Plot single frame (TidalFlow)
 plot_solution(
     output_path="output_dir",
     frame=10,
     wave_treshold=1e-2,
 )
 
-# Animate all frames
+# Animate all frames (TidalFlow)
 animate_solution(
     output_path="output_dir",
     frames=None,
@@ -784,12 +785,12 @@ animate_solution(
 )
 ```
 
-### Bathymetry
+### TidalFlow Bathymetry Utilities
 
 ```python
-from physrag.utils import interpolate_gebco_on_grid
+from tidalflow.utils import interpolate_gebco_on_grid
 
-# Load GEBCO bathymetry and interpolate to grid
+# Load GEBCO bathymetry and interpolate to grid (TidalFlow)
 bathymetry = interpolate_gebco_on_grid(
     X=lon_grid,
     Y=lat_grid,
@@ -804,7 +805,7 @@ bathymetry[np.isnan(bathymetry)] = 0.0
 
 ## Physics
 
-PhysRAG-SWE solves the 2D shallow water equations with bathymetric source terms and wind forcing:
+TidalFlow-SWE solves the 2D shallow water equations with bathymetric source terms and wind forcing:
 
 > [!NOTE]
 > The solver uses a Roe-type Riemann solver (`shallow_roe_with_efix_2D`) with support for bathymetric source terms and wind forcing.
@@ -1047,54 +1048,55 @@ conda install cartopy  # Recommended method
 ## Project Structure
 
 ```
-physrag/
-├── __init__.py                          # Package exports
-├── config.py                            # SimulationConfig dataclass
-├── solver.py                            # SWESolver main class
-├── exceptions.py                        # Custom exceptions
-├── utils.py                             # Utility functions
-├── bathymetry_retrieval/
+physrag/                                # PhysRAG Package (Data Retrieval & Preprocessing)
+├── __init__.py                         # Package exports
+├── utils.py                            # Utility functions (validation, helpers)
+├── bathymetry_retrieval/               # GEBCO bathymetry data retrieval
 │   ├── __init__.py
-│   ├── gebco_opendap.py                # GEBCO OPeNDAP access
-│   └── gebco_local.py                  # Local NetCDF bathymetry
-├── rag_data_retrieval/
+│   ├── retrieval.py                   # OPeNDAP/NetCDF fetching
+│   ├── query.py                       # Query building
+│   └── conversion.py                  # Data format conversion
+├── rag_data_retrieval/                 # CSV observational data filtering
 │   ├── __init__.py
-│   ├── csv_loader.py                   # CSV data loading
-│   └── filters.py                      # Geographic/temporal filtering
-├── data_interpolation/
+│   └── csv_retrieval.py               # Geographic/temporal filtering
+├── data_interpolation/                 # Sparse data interpolation
 │   ├── __init__.py
-│   ├── sparse_interpolator.py          # RBF/Kriging interpolation
-│   └── methods.py                      # Interpolation implementations
-├── integrations/
-│   ├── __init__.py
-│   └── tidalflow_adapter.py            # TidalFlow integration
-└── coordinate_mapper.py                # Geographic coordinate transformations
+│   └── sparse_interpolator.py         # RBF/Kriging methods
+└── integrations/                       # Integration adapters for external solvers
+    ├── __init__.py
+    ├── tidalflow_providers.py         # TidalFlow provider adapters
+    ├── swe_simulator_providers.py     # SWE-simulator provider adapters
+    └── utils.py                        # Integration utilities
+
+[TidalFlow-SWE]                         # External package (installed separately)
+├── config.py                           # SimulationConfig dataclass
+├── solver.py                           # SWESolver main class (PyClaw integration)
+├── providers.py                        # Abstract provider interfaces
+└── ... (other TidalFlow components)
 
 examples/
-├── examples_set.py                      # Complete set of examples and workflows
+├── examples_set.py                     # Workflows demonstrating PhysRAG + TidalFlow
 
 data/
-├── gebco_*.nc                           # GEBCO bathymetry NetCDF files
-└── observations/                       # Sample observation data
+├── gebco_*.csv                         # Downloaded GEBCO bathymetry data
+├── asv_datasets/                       # Sample validation datasets
+└── florida_weather_datasets/           # Weather/tide observation data
 
 docs/
 ├── getting-started.md                  # Installation & quick start
-├── architecture.md                     # Design principles & patterns
+├── architecture.md                     # Design principles & workflow
 ├── guides.md                           # Developer guides
 ├── index.md                            # Documentation index
-├── api.md                              # High-level API overview
+├── api.md                              # API overview
 └── classes/
-    ├── data_providers.md               # Data provider interfaces
-    ├── bathymetry.md                   # Bathymetry utilities
-    ├── data_interpolation.md           # Interpolation methods
-    ├── swe_solver.md                   # SWESolver class
-    └── swe_result.md                   # Result container
+    ├── data_providers.md               # PhysRAG data provider classes
+    ├── bathymetry.md                   # Bathymetry retrieval API
+    └── data_interpolation.md           # Interpolation methods API
 
 tests/
 ├── test_bathymetry_retrieval.py
 ├── test_data_filtering.py
 ├── test_data_interpolation.py
-├── test_swe_solver.py
 └── test_integration.py
 ```
 
