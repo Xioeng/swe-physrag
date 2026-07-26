@@ -133,24 +133,20 @@ provider = StaticInitialCondition(elevation=0.2)  # 20 cm above MSL
 h_init = provider(x_grid, y_grid)
 ```
 
-#### InterpolatedInitialCondition
+#### InitialConditionInterpolationProvider
 
 ```python
-from physrag.rag_data_retrieval import InterpolatedInitialCondition
-import pandas as pd
-
-# From tide gauge observations
-observations = pd.read_csv("data/tide_observations.csv")
-
-provider = InterpolatedInitialCondition(
-    x_obs=observations['longitude'].values,
-    y_obs=observations['latitude'].values,
-    z_obs=observations['water_level'].values,
-    method='rbf',
-    rbf_function='thin_plate'
+from physrag.integrations.tidalflow_providers import (
+    InitialConditionInterpolationProvider,
 )
 
-h_init = provider(x_grid, y_grid)
+provider = InitialConditionInterpolationProvider(
+    extent=(-80.2, -80.0, 25.6, 25.95),
+    csv_path="data/tide_observations.csv",
+    values_col_name="water_level_m_mllw",
+)
+
+h_init = provider.get_initial_condition(lon_grid, lat_grid)
 ```
 
 ## WindProvider

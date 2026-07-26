@@ -211,7 +211,7 @@ conda activate physrag-swe
 After TidalFlow-SWE is installed and the environment is activated:
 
 ```bash
-git clone https://github.com/yourusername/physrag-swe.git
+git clone https://github.com/Xioeng/physrag-swe.git
 cd physrag-swe
 pip install -r requirements.txt
 pip install .
@@ -243,9 +243,8 @@ import numpy as np
 
 # Download GEBCO bathymetry via OPeNDAP
 extent = (-80.1865, -80.0791, 25.6678, 25.9137)  # lon_min, lon_max, lat_min, lat_max
-bathymetry_df = physrag.bathymetry_retrieval.fetch_gebco_opendap(
-    extent=extent,
-    output_path="data/gebco_biscayne.csv"
+bathymetry_df = physrag.bathymetry_retrieval.download_gebco_ascii(
+    extent=extent
 )
 
 print(f"Downloaded {len(bathymetry_df)} bathymetry points")
@@ -265,7 +264,7 @@ observations = physrag.rag_data_retrieval.read_csv_extent(
     extent=(-80.2, -80.0, 25.6, 25.95),
     lat_col="latitude",
     lon_col="longitude",
-    time_col="timestamp",
+    timestamp_col="timestamp",
     start_time="2023-01-01",
     end_time="2023-12-31"
 )
@@ -434,26 +433,23 @@ import matplotlib.pyplot as plt
 extent = (-87.23, -87.09, 30.20, 30.40)  # Gulf Shores, Alabama
 
 # Fetch GEBCO data
-bathymetry_df = physrag.bathymetry_retrieval.fetch_gebco_opendap(
-    extent=extent,
-    output_path="data/gebco_gulf_shores.csv"
+bathymetry_df = physrag.bathymetry_retrieval.download_gebco_ascii(
+    extent=extent
 )
 
 print(f"Retrieved {len(bathymetry_df)} bathymetry points")
-print(f"Depth range: {bathymetry_df['elevation'].min():.1f} to {bathymetry_df['elevation'].max():.1f} m")
+print(f"Depth range: {bathymetry_df['Elevation'].min():.1f} to {bathymetry_df['Elevation'].max():.1f} m")
 
 # Create grid and interpolate
 x_grid = np.linspace(extent[0], extent[1], 100)
 y_grid = np.linspace(extent[2], extent[3], 100)
 X_grid, Y_grid = np.meshgrid(x_grid, y_grid)
 
-# Interpolate using RBF
+# Interpolate using SparseDataInterpolator
 interpolator = physrag.data_interpolation.SparseDataInterpolator(
-    x=bathymetry_df['longitude'].values,
-    y=bathymetry_df['latitude'].values,
-    values=bathymetry_df['elevation'].values,
-    method='rbf',
-    rbf_function='thin_plate'
+    x=bathymetry_df['Longitude'].values,
+    y=bathymetry_df['Latitude'].values,
+    values=bathymetry_df['Elevation'].values
 )
 
 bathymetry_grid, uncertainty = interpolator.interpolate(
@@ -488,7 +484,7 @@ observations = physrag.rag_data_retrieval.read_csv_extent(
     extent=(-82, -79, 24, 27),  # Florida Keys region
     lat_col="latitude",
     lon_col="longitude",
-    time_col="timestamp",
+    timestamp_col="timestamp",
     start_time="2023-09-01",
     end_time="2023-09-30"
 )
@@ -721,13 +717,12 @@ eta = h + bathymetry
 ### PhysRAG Data Retrieval
 
 ```python
-from physrag.bathymetry_retrieval import fetch_gebco_opendap
+from physrag.bathymetry_retrieval import download_gebco_ascii
 from physrag.rag_data_retrieval import read_csv_extent
 
 # Fetch GEBCO bathymetry (PhysRAG)
-bathymetry_df = fetch_gebco_opendap(
-    extent=(-80.2, -80.0, 25.6, 25.95),
-    output_path="data/gebco_file.csv"
+bathymetry_df = download_gebco_ascii(
+    extent=(-80.2, -80.0, 25.6, 25.95)
 )
 
 # Filter CSV observations (PhysRAG)
@@ -1185,7 +1180,7 @@ We welcome contributions! Whether you have feedback on features, have encountere
 
 ```bash
 # Clone and setup development environment
-git clone https://github.com/yourusername/physrag-swe.git
+git clone https://github.com/Xioeng/physrag-swe.git
 cd physrag-swe
 
 # Create environment
@@ -1219,18 +1214,18 @@ If you use PhysRAG-SWE in your research, teaching, or applications, please cite 
   title={PhysRAG-SWE: Physics-Informed Retrieval-Augmented Generation for Shallow Water Equations Simulations},
   author={Fuentes, Jose},
   year={2025},
-  url={https://github.com/yourusername/physrag-swe},
+  url={https://github.com/Xioeng/physrag-swe},
   license={MIT}
 }
 ```
 
 ### APA
 
-Fuentes, J. (2025). PhysRAG-SWE: Physics-informed retrieval-augmented generation for shallow water equations simulations. Retrieved from https://github.com/yourusername/physrag-swe
+Fuentes, J. (2025). PhysRAG-SWE: Physics-informed retrieval-augmented generation for shallow water equations simulations. Retrieved from https://github.com/Xioeng/physrag-swe
 
 ### MLA
 
-Fuentes, Jose. "PhysRAG-SWE: Physics-Informed Retrieval-Augmented Generation for Shallow Water Equations Simulations." GitHub, 2025, https://github.com/yourusername/physrag-swe.
+Fuentes, Jose. "PhysRAG-SWE: Physics-Informed Retrieval-Augmented Generation for Shallow Water Equations Simulations." GitHub, 2025, https://github.com/Xioeng/physrag-swe.
 
 ---
 

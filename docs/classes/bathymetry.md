@@ -19,13 +19,12 @@ Retrieve GEBCO data directly from remote servers without manual download:
 
 ```python
 import physrag
-from physrag.bathymetry_retrieval import fetch_gebco_opendap
+from physrag.bathymetry_retrieval import download_gebco_ascii
 
 # Download for a coastal region
 extent = (-80.1865, -80.0791, 25.6678, 25.9137)  # Miami area
-bathymetry_df = fetch_gebco_opendap(
-    extent=extent,
-    output_path="data/gebco_miami.csv"
+bathymetry_df = download_gebco_ascii(
+    extent=extent
 )
 
 print(f"Downloaded {len(bathymetry_df)} bathymetry points")

@@ -182,15 +182,18 @@ def read_csv_extent(
 
     # Optional: Select specific columns (include lat/lon/timestamp for reference)
     if columns is not None:
-        # Ensure we always include the spatial coordinates
-        columns_to_keep = list(set(columns + [lat_col, lon_col]))
+        # Ensure spatial coordinates are included while preserving order
+        requested_cols = list(columns)
+        for col in [lat_col, lon_col]:
+            if col not in requested_cols:
+                requested_cols.append(col)
 
         # Also keep timestamp if it was used for filtering
-        if timestamp_col is not None:
-            columns_to_keep = list(set(columns_to_keep + [timestamp_col]))
+        if timestamp_col is not None and timestamp_col not in requested_cols:
+            requested_cols.append(timestamp_col)
 
-        # Filter to only available columns
-        available_cols = [c for c in columns_to_keep if c in df.columns]
+        # Filter to only available columns in order
+        available_cols = [c for c in requested_cols if c in df.columns]
         df = df[available_cols]
         print(f"Selected {len(available_cols)} columns: {available_cols}")
 

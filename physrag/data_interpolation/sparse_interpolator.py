@@ -82,7 +82,7 @@ class SparseDataInterpolator:
             return_confidence (bool): If True, also return distance to nearest station.
                                      Default: False.
 
-        Rpeturns:
+        Returns:
             ndarray: Interpolated values at query points, shape (n_query,)
             ndarray (optional): If return_confidence=True, distance to nearest station.
 

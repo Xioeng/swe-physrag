@@ -68,11 +68,11 @@ mypy physrag/
 Create a file `simple_simulation.py`:
 
 ```python
-import physrag
+import tidalflow
 import numpy as np
 
 # Configuration: 10x10 km domain
-config = physrag.config.SimulationConfig(
+config = tidalflow.config.SimulationConfig(
     lon_range=(-10.0, 10.0),
     lat_range=(-10.0, 10.0),
     nx=50,
@@ -86,7 +86,7 @@ config = physrag.config.SimulationConfig(
 )
 
 # Initialize solver
-solver = physrag.solver.SWESolver(config=config)
+solver = tidalflow.solver.SWESolver(config=config)
 
 # Flat seafloor at -10m depth
 bathymetry = -10.0 * np.ones((config.ny, config.nx))
@@ -265,9 +265,8 @@ import physrag
 
 extent = (-80.1865, -80.0791, 25.6678, 25.9137)
 
-bathymetry_df = physrag.bathymetry_retrieval.fetch_gebco_opendap(
-    extent=extent,
-    output_path="data/gebco_miami.csv"
+bathymetry_df = physrag.bathymetry_retrieval.download_gebco_ascii(
+    extent=extent
 )
 
 print(f"Downloaded {len(bathymetry_df)} bathymetry points")
@@ -387,11 +386,10 @@ Check internet connection and server availability:
 ```python
 import physrag
 
-# Try downloading with timeout
+# Try downloading GEBCO bathymetry
 try:
-    df = physrag.bathymetry_retrieval.fetch_gebco_opendap(
-        extent=extent,
-        timeout=120  # 2 minute timeout
+    df = physrag.bathymetry_retrieval.download_gebco_ascii(
+        extent=extent
     )
 except Exception as e:
     print(f"Download failed: {e}")

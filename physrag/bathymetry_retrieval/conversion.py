@@ -132,6 +132,31 @@ def parse_gebco_ascii(
                 elevations.append(row)
             continue
 
+    # Fallback: if OPeNDAP array headers were not found, try parsing as flat 3-column CSV (lon, lat, elevation)
+    if not lons or not lats:
+        parsed_rows = []
+        for line in lines:
+            line_str = line.strip()
+            if not line_str or line_str.startswith("Dataset") or line_str.startswith("bodc") or "-----" in line_str:
+                continue
+            parts = [p.strip() for p in line_str.split(",")]
+            if len(parts) == 3:
+                try:
+                    lon_v, lat_v, elev_v = float(parts[0]), float(parts[1]), float(parts[2])
+                    parsed_rows.append({"Longitude": lon_v, "Latitude": lat_v, "Elevation": elev_v})
+                except ValueError:
+                    continue
+        df = pd.DataFrame(parsed_rows) if parsed_rows else pd.DataFrame(columns=["Longitude", "Latitude", "Elevation"])
+        if save_csv and not df.empty:
+            if output_csv_path is None:
+                txt_path = Path(txt_filepath)
+                output_csv_path = txt_path.with_suffix(".csv")
+            df.to_csv(output_csv_path, index=False)
+            print(f"Saved CSV to: {output_csv_path}")
+        print(f"Parsed GEBCO data from: {txt_filepath}")
+        print(f"  Total records: {len(df)}")
+        return df
+
     # Initialize DataFrame structure
     data = {"Longitude": [], "Latitude": [], "Elevation": []}
 

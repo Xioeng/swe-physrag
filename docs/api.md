@@ -278,14 +278,13 @@ Interpolator for sparse 2D data with multiple methods.
 
 **Constructor:**
 ```python
-SparseDataInterpolator(x, y, values, method='rbf')
+SparseDataInterpolator(x, y, values)
 ```
 
 **Parameters:**
 - `x` (array-like) — X coordinates (longitude)
 - `y` (array-like) — Y coordinates (latitude)
 - `values` (array-like) — Data values at (x, y) points
-- `method` (str) — Interpolation method ('rbf', 'kriging', 'idw', 'linear')
 
 **Methods:**
 
@@ -486,19 +485,21 @@ bathymetry = provider.get_bathymetry(lon_mg, lat_mg)
 
 ---
 
-#### `WaterLevelInterpolationProvider`
+#### `InitialConditionInterpolationProvider` (or `WaterLevelInterpolationProvider`)
 
-Water level provider using interpolated sparse measurements.
+Initial condition provider using interpolated sparse measurements.
 
 **Constructor:**
 ```python
-WaterLevelInterpolationProvider(lon, lat, values)
+InitialConditionInterpolationProvider(extent, csv_path, values_col_name="water_level_m_mllw", lon_lat_col_names=("longitude_decimal_degrees", "latitude_decimal_degrees"), timestamp_col="timestamp_utc_iso8601")
 ```
 
 **Parameters:**
-- `lon` (array-like) — Measurement longitudes
-- `lat` (array-like) — Measurement latitudes
-- `values` (array-like) — Water level values
+- `extent` (tuple) — Geographic extent (west, east, south, north)
+- `csv_path` (str) — Path to CSV observation data file
+- `values_col_name` (str) — Name of the column containing values to interpolate
+- `lon_lat_col_names` (tuple) — Column names for longitude and latitude
+- `timestamp_col` (str) — Column name for timestamp
 
 **Methods:**
 

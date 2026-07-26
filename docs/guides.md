@@ -60,8 +60,9 @@ Integrate GEBCO bathymetry with water level observations:
 import numpy as np
 import pandas as pd
 import physrag
-from physrag.config import SimulationConfig
-from physrag.solver import SWESolver
+import tidalflow
+from tidalflow.config import SimulationConfig
+from tidalflow.solver import SWESolver
 from physrag.bathymetry_retrieval import download_gebco_ascii
 from physrag.data_interpolation import SparseDataInterpolator
 
@@ -785,7 +786,7 @@ print(f"Leave-one-out: mean error = {mean_error:.4f}, std = {std_error:.4f}")
 import physrag
 from physrag.integrations.tidalflow_providers import (
     BathymetryFromGEBCO,
-    WaterLevelInterpolationProvider,
+    InitialConditionInterpolationProvider,
 )
 import numpy as np
 

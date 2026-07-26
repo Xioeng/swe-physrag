@@ -75,7 +75,7 @@ def download_gebco_ascii(
         filepath.unlink()
         print(f"Deleted temporary ASCII file: {filepath}")
 
-    return df, str(filepath) if keep_txt else None
+    return df
 
 
 def get_gebco_data(
@@ -104,10 +104,13 @@ def get_gebco_data(
             Defaults to False.
 
     Returns:
-        pandas.DataFrame: Data with columns [Longitude, Latitude, Elevation].
+        tuple: (df, txt_filepath_or_None, csv_filepath_or_None)
     """
+    west, east, south, north = extent
+    txt_path = Path(output_dir) / f"gebco_{version}_n{north}_s{south}_w{west}_e{east}.txt"
+
     # Download and parse data directly
-    df, txt_path = download_gebco_ascii(
+    df = download_gebco_ascii(
         extent=extent,
         output_dir=output_dir,
         version=version,
@@ -115,10 +118,9 @@ def get_gebco_data(
         keep_txt=keep_txt,
     )
 
+    csv_filepath = None
     # Optionally save CSV export (if CSV desired, save directly from DataFrame)
     if keep_csv:
-        # Unpack extent for consistent filename generation
-        west, east, south, north = extent
         csv_filepath = (
             Path(output_dir) / f"gebco_{version}_w{west}_e{east}_s{south}_n{north}.csv"
         )

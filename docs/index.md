@@ -60,16 +60,17 @@ df = download_gebco_ascii(extent=(-87.25, -87.05, 30.2, 30.4))
 **Interpolate Sparse Data:**
 ```python
 from physrag.data_interpolation import SparseDataInterpolator
-interp = SparseDataInterpolator(lon, lat, values, method='rbf')
+interp = SparseDataInterpolator(x=lon, y=lat, values=values)
 result, uncertainty = interp.interpolate(lon_grid, lat_grid)
 ```
 
-**Run SWE Simulation:**
+**Run SWE Simulation (with TidalFlow):**
 ```python
-from physrag.config import SimulationConfig
-from physrag.solver import SWESolver
+import tidalflow
+from tidalflow.config import SimulationConfig
+from tidalflow.solver import SWESolver
 
-config = SimulationConfig(lon_range=(...), lat_range=(...), nx=50, ny=50, t_end=3600)
+config = SimulationConfig(lon_range=(-80.2, -80.0), lat_range=(25.6, 25.9), nx=50, ny=50, t_final=3600.0)
 solver = SWESolver(config=config)
 solver.set_bathymetry(bathymetry)
 solver.set_initial_condition(h0)
@@ -222,9 +223,9 @@ Contributions welcome! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
 - 📖 Documentation: [This site]
 - 🐛 Issues: [GitHub Issues](https://github.com/your-org/physrag-swe/issues)
 - 💬 Discussions: [GitHub Discussions](https://github.com/your-org/physrag-swe/discussions)
-- `WaterLevelInterpolationProvider(lon, lat, values)` — Water level provider for tidalflow
+- `InitialConditionInterpolationProvider` — Initial condition water level provider for tidalflow integration
 
-**See:** [Getting Started with tidalflow](./getting-started.md#using-with-tidalflow)
+**See:** [Getting Started](./getting-started.md)
 
 ## Documentation Index
 

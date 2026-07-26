@@ -176,7 +176,7 @@ class InitialConditionInterpolationProvider(
         # Return in tidalflow format: (3, nx, ny)
         initial_condition = np.zeros((3, *lon_grid.shape))
         initial_condition[0] = data.reshape(lon_grid.shape)  # Water depth
-        # Momentum components (0,0) initialied to zero
+        # Momentum components (0,0) initialized to zero
 
         return initial_condition
 
@@ -248,3 +248,7 @@ class WindProviderInterpolationProviderDummy(tidalflow.providers.WindProvider):
         v_speed = speed * np.sin(np.radians(self.direction))
 
         return (u_speed, v_speed)
+
+
+# Alias for backward compatibility with documentation examples
+WaterLevelInterpolationProvider = InitialConditionInterpolationProvider

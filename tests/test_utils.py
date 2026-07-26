@@ -113,7 +113,7 @@ def test_single_point_extent():
 
 def test_extent_with_floats():
     """Test that float coordinates work."""
-    assert is_valid_extent((-80.123, -80.456, 25.678, 25.999)) is True
+    assert is_valid_extent((-80.456, -80.123, 25.678, 25.999)) is True
 
 
 def test_extent_with_negative_coordinates():

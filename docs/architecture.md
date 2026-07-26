@@ -227,7 +227,7 @@ class SWESolver:
 
 **Key Functions:**
 ```python
-fetch_gebco_opendap(extent, ...)           # Download
+download_gebco_ascii(extent, ...)           # Download
 load_gebco_netcdf(nc_path, ...)           # Local file
 interpolate_gebco_on_grid(X, Y, ...)      # To grid
 ```

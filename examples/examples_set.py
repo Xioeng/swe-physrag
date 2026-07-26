@@ -70,7 +70,7 @@ def run_swe_simulation(
         ny=60,
         # Time
         t_final=2000.0,  # seconds
-        dt=10.0,  # seconds
+        dt=20.0,  # seconds
         # Physics
         gravity=9.81,
         # Boundary conditions
@@ -163,6 +163,7 @@ def run_swe_simulation(
     fps = 20
     if solver.rank == 0 and solver.config.output_dir is not None:
         tidalflow.utils.visualization.animate_solution(
+            add_satellite_image=True,
             output_path=solver.config.output_dir,
             frames=frames,
             wave_treshold=wave_threshold,
